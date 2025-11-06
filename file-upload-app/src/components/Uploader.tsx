@@ -20,9 +20,15 @@ const Uploader = () => {
         endpoint: '/api/files',
         chunkSize: 5242880 * 2, // 10mb
         retryDelays: [0, 1000, 3000, 5000],
+        // parallelUploads: 1,
+        headers: {
+          'Authorization': `Bearer 1234`,
+          'X-Custom-Header': '1234',
+        }
+
     })
     .use(StatusBar, {
-        showProgressDetails: true,   // show “43 MB of 101 MB • 8 s left”
+        showProgressDetails: true,   // show "43 MB of 101 MB - 8 s left"
         hideUploadButton: false,     // keep the upload button
         hidePauseResumeButton: false,// allow pausing/resuming
         hideCancelButton: false,     // allow canceling
