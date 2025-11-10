@@ -6,6 +6,10 @@
 # Minio
 FileUploader.AppHost/.minio/*
 
+#Clam
+.clam-scan/*
+.clam/*
+
 # User-specific files
 *.rsuser
 *.suo

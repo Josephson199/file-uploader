@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using nClam;
+using System.IO;
 using System.Security.Claims;
 using System.Text;
 using tusdotnet;
@@ -36,6 +38,8 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 });
 
 builder.Services.AddSingleton<FileValidator>();
+
+var clamUri = new Uri(builder.Configuration["ClamAv:Uri"]!);
 
 var app = builder.Build();
 
@@ -121,7 +125,7 @@ app.UseWhen(
                 },
 
                 OnBeforeCreateAsync = fileValidator.BeforeCreate,
-                
+
                 OnCreateCompleteAsync = ctx =>
                 {
                     logger.LogInformation("Tus OnCreateCompleteAsync: {FileId}",
@@ -158,6 +162,21 @@ app.UseWhen(
                         var k = item.Key;
                         var v = item.Value.GetString(Encoding.UTF8);
                         logger.LogInformation($"{k} - {v}");
+                    }
+                    
+                    var clam = new ClamClient(clamUri.Host, clamUri.Port);
+                    var content = await file.GetContentAsync(ctx.CancellationToken);
+
+                    clam.MaxStreamSize = long.MaxValue;
+
+                    var scanResult = await clam.SendAndScanFileAsync(content);
+
+                    var scanResult2 = await clam.ScanFileOnServerAsync("/scan/ccookbook.pdf");
+
+                    if (scanResult.Result == ClamScanResults.VirusDetected)
+                    {
+                        Console.WriteLine("Virus!");
+                        return;
                     }
 
                     // Mark file as uploaded in database, send notification, etc.
