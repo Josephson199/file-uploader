@@ -53,6 +53,12 @@ var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservic
     .WithEnvironment("Storage__SecretKey", "password")
     .WithEnvironment("ClamAv__Uri", () => "tcp://localhost:3310");
 
+// Add worker project for background tasks
+// Find objects in s3 by tags or path.
+// Download them ../clam-scan
+// Start clam scan against file
+// Mark s3 object as scanned by tags or by moving s3 object to another path.
+
 builder.AddViteApp(name: "file-upload-app", workingDirectory: "../file-upload-app")
     .WithReference(apiService)
     .WaitFor(apiService)
