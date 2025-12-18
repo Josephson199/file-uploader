@@ -1,11 +1,6 @@
-using Aspire.Hosting;
-using Aspire.Hosting;
 using FileUploader.AppHost;
-using FileUploader.AppHost.Resources;
 using Microsoft.Extensions.DependencyInjection;
 using Minio;
-using Projects;
-using System.IO;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -53,7 +48,7 @@ var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservic
     .WithEnvironment("Storage__SecretKey", "password")
     .WithEnvironment("ClamAv__Uri", () => "tcp://localhost:3310");
 
-// Add worker project for background tasks
+// Add worker project  for background tasks
 // Find objects in s3 by tags or path.
 // Download them ../clam-scan
 // Start clam scan against file
