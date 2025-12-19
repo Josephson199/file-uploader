@@ -55,6 +55,7 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 });
 
 builder.Services.AddSingleton<FileValidator>();
+builder.Services.AddHostedService<VirusScannerBackgroundService>();
 
 var clamUri = new Uri(builder.Configuration["ClamAv:Uri"]!);
 
@@ -97,7 +98,7 @@ app.UseWhen(
                 new TusS3StoreConfiguration
                 {
                     BucketName = "bucket",
-                    FileObjectPrefix = $"uploads/{httpContext.User.FindFirstValue("sub")}",
+                    FileObjectPrefix = $"uploads/temp/{httpContext.User.FindFirstValue("sub")}",
                 },
                 subApp.ApplicationServices.GetRequiredService<IAmazonS3>()
             ),
