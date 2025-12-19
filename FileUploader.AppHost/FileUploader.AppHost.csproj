@@ -11,11 +11,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include=".keycloak\realm.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\FileUploader.ApiService\FileUploader.ApiService.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.AppHost" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.Keycloak" Version="13.1.0-preview.1.25616.3" />
     <PackageReference Include="Aspire.Hosting.NodeJs" Version="9.5.2" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.Minio" Version="9.8.0" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.NodeJS.Extensions" Version="9.8.0" />

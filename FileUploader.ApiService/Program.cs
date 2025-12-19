@@ -2,10 +2,12 @@
 using Amazon.S3;
 using Amazon.S3.Util;
 using FileUploader.ApiService;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using nClam;
 using System.IO;
 using System.Security.Claims;
@@ -16,12 +18,27 @@ using tusdotnet.Models;
 using tusdotnet.Models.Configuration;
 using tusdotnet.Models.Expiration;
 using tusdotnet.Stores.S3;
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
+
+// Add JWT bearer authentication using configuration injected by AppHost
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        // Authority should point to Keycloak realm, e.g. http://localhost:8080/realms/aspire
+        options.Authority = builder.Configuration["Authentication:Authority"];
+        options.RequireHttpsMetadata = false; // running locally inside containers
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateAudience = true,
+            ValidAudience = builder.Configuration["Authentication:Audience"]
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
@@ -50,6 +67,10 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+// Ensure authentication/authorization middleware is active before request branching that expects an authenticated user
+app.UseAuthentication();
+app.UseAuthorization();
+
 // Branch ALL requests that start with /files into Tus
 app.UseWhen(
     ctx => ctx.Request.Path.StartsWithSegments("/files"),
@@ -76,7 +97,7 @@ app.UseWhen(
                 new TusS3StoreConfiguration
                 {
                     BucketName = "bucket",
-                    FileObjectPrefix = $"uploads",
+                    FileObjectPrefix = $"uploads/{httpContext.User.FindFirstValue("sub")}",
                 },
                 subApp.ApplicationServices.GetRequiredService<IAmazonS3>()
             ),
@@ -87,13 +108,19 @@ app.UseWhen(
                     logger.LogTrace("Tus OnAuthorizeAsync: {Intent} {FileId}",
                                     ctx.Intent, ctx.FileId);
 
+                    // Require an authenticated user — Token validation happens via the authentication middleware
+                    var user = ctx.HttpContext.User;
+                    if (user?.Identity?.IsAuthenticated != true)
+                    {
+                        ctx.FailRequest(System.Net.HttpStatusCode.Unauthorized, "Authentication required");
+                        return;
+                    }
+
                     if (ctx.Intent == IntentType.CreateFile)
                     {
                         string resourceId = ctx.HttpContext.Request.Headers["X-Custom-Header"].Single() ?? string.Empty;
 
                         // Check if the user is authorized to create files for the specified resource
-                        var user = ctx.HttpContext.User;
-
                         var userOwnsResource = await ValidateThatUserOwnsResource(user, resourceId);
 
                         if (!userOwnsResource)
@@ -169,11 +196,11 @@ app.UseWhen(
 
                     clam.MaxStreamSize = long.MaxValue;
 
-                    var scanResult = await clam.SendAndScanFileAsync(content);
+                    //var scanResult = await clam.SendAndScanFileAsync(content);
 
                     var scanResult2 = await clam.ScanFileOnServerAsync("/scan/ccookbook.pdf");
 
-                    if (scanResult.Result == ClamScanResults.VirusDetected)
+                    if (scanResult2.Result == ClamScanResults.VirusDetected)
                     {
                         Console.WriteLine("Virus!");
                         return;

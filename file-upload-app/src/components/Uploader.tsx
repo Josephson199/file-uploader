@@ -6,8 +6,11 @@ import '@uppy/dashboard/dist/style.css'
 import '@uppy/status-bar/dist/style.css'
 import { useState } from 'react'
 import StatusBar from '@uppy/status-bar'
+import useKeycloak from '../hooks/useKeycloak'
 
 const Uploader = () => {
+  const { token } = useKeycloak();
+
   const [uppy] = useState(() =>
     new Uppy({
       autoProceed: false,
@@ -22,7 +25,7 @@ const Uploader = () => {
         retryDelays: [0, 1000, 3000, 5000],
         // parallelUploads: 1,
         headers: {
-          'Authorization': `Bearer 1234`,
+          'Authorization': `Bearer ${token}`,
           'X-Custom-Header': '1234',
         }
 

@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>silent-check-sso</title>
+  </head>
+  <body>
+    <script>
+      // required by keycloak-js silent check
+      if (window.parent) {
+        window.parent.postMessage(location.href, location.origin);
+      }
+    </script>
+  </body>
+</html>

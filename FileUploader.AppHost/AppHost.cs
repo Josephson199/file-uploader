@@ -1,6 +1,8 @@
+using Aspire.Hosting;
 using FileUploader.AppHost;
 using Microsoft.Extensions.DependencyInjection;
 using Minio;
+using System.Net.Sockets;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -26,6 +28,7 @@ builder.Services.AddHostedService(sp => new MinioBucketInitializer(
        bucketName: "bucket",
        pollDelay: TimeSpan.FromSeconds(5)));
 
+// TODO move clam to apphost folder and gitignore relevant paths
 var clamav = builder.AddContainer("clamav", "clamav/clamav:latest")
     .WithBindMount("../.clam-scan", "/scan")
     .WithBindMount("../.clam", "/var/lib/clamav")
@@ -33,20 +36,36 @@ var clamav = builder.AddContainer("clamav", "clamav/clamav:latest")
     {
         e.TargetPort = 3310;
         e.Port = 3310;
-        e.Protocol = System.Net.Sockets.ProtocolType.Tcp;
+        e.Protocol = ProtocolType.Tcp;
         e.UriScheme = "tcp";
         e.IsExternal = true;
     });
 
+
+var keycloakDataPath = Path.Combine(builder.Environment.ContentRootPath, ".keycloak", "data");
+
+Directory.CreateDirectory(keycloakDataPath);
+
+var username = builder.AddParameter("admin", value: "admin");
+var password = builder.AddParameter("password", value: "password");
+var keycloak = builder.AddKeycloak("keycloak", 8080, username, password)
+    .WithDataBindMount(keycloakDataPath)
+    .WithRealmImport("./.keycloak");
+
 var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservice")
     .WithHttpHealthCheck("/health")
     .WithReference(minio)
+    .WithReference(keycloak)
     .WaitFor(minio)
     .WaitFor(clamav)
+    .WaitFor(keycloak)
     .WithEnvironment("Storage__ServiceUrl", "http://localhost:9000")
     .WithEnvironment("Storage__AccessKey", "admin")
     .WithEnvironment("Storage__SecretKey", "password")
-    .WithEnvironment("ClamAv__Uri", () => "tcp://localhost:3310");
+    .WithEnvironment("ClamAv__Uri", () => "tcp://localhost:3310")
+    // Keycloak settings consumed by the API via Aspire service discovery
+    .WithEnvironment("Authentication__Authority", "http://localhost:8080/realms/aspire")
+    .WithEnvironment("Authentication__Audience", "spa-client");
 
 // Add worker project  for background tasks
 // Find objects in s3 by tags or path.
@@ -57,7 +76,10 @@ var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservic
 builder.AddViteApp(name: "file-upload-app", workingDirectory: "../file-upload-app")
     .WithReference(apiService)
     .WaitFor(apiService)
-    .WithNpmPackageInstallation();
+    .WithNpmPackageInstallation()
+    .WithEnvironment("VITE_MINIO_URL", "http://localhost:9000")
+    .WithEnvironment("VITE_CLAMAV_URL", "http://localhost:3310")
+    .WithEnvironment("VITE_KEYCLOAK_URL", "http://localhost:8080/realms/aspire");
 
 var aspireApp = builder.Build();
 
