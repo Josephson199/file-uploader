@@ -1,19 +1,14 @@
 ﻿using Amazon.Runtime;
 using Amazon.S3;
-using Amazon.S3.Util;
 using FileUploader.ApiService;
+using FileUploader.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using nClam;
-using System.IO;
 using System.Security.Claims;
 using System.Text;
 using tusdotnet;
-using tusdotnet.Constants;
 using tusdotnet.Models;
 using tusdotnet.Models.Configuration;
 using tusdotnet.Models.Expiration;
@@ -21,6 +16,10 @@ using tusdotnet.Stores.S3;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+
+builder.Services.AddDbContextPool<AppDbContext>(opt =>
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 
@@ -61,10 +60,18 @@ var clamUri = new Uri(builder.Configuration["ClamAv:Uri"]!);
 
 var app = builder.Build();
 
+// TODO: Create middleware for enriching User data from db
+
 app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Database.Migrate();
+    }
+
     app.MapOpenApi();
 }
 

@@ -3,6 +3,9 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# Postgres
+FileUploader.AppHost/.postgres/*
+
 # Keycloak
 FileUploader.AppHost/.keycloak/data/*
 

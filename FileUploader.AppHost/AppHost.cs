@@ -21,7 +21,7 @@ IMinioClient minioClient = new MinioClient()
     .WithSSL(false)
     .Build();
 
-builder.Services.AddSingleton<IMinioClient>(minioClient);
+builder.Services.AddSingleton(minioClient);
 
 builder.Services.AddHostedService(sp => new MinioBucketInitializer(
        sp.GetRequiredService<IMinioClient>(),
@@ -43,7 +43,6 @@ var clamav = builder.AddContainer("clamav", "clamav/clamav:latest")
 
 
 var keycloakDataPath = Path.Combine(builder.Environment.ContentRootPath, ".keycloak", "data");
-
 Directory.CreateDirectory(keycloakDataPath);
 
 var username = builder.AddParameter("admin", value: "admin");
@@ -52,13 +51,23 @@ var keycloak = builder.AddKeycloak("keycloak", 8080, username, password)
     .WithDataBindMount(keycloakDataPath)
     .WithRealmImport("./.keycloak");
 
+var postgresDataPath = Path.Combine(builder.Environment.ContentRootPath, ".postgres", "data");
+Directory.CreateDirectory(postgresDataPath);
+
+var postgres = builder.AddPostgres("postgres", username, password)
+     .WithDataBindMount(postgresDataPath);
+
+var postgresdb = postgres.AddDatabase("postgresdb", "postgresdb");
+
 var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservice")
     .WithHttpHealthCheck("/health")
     .WithReference(minio)
     .WithReference(keycloak)
+    .WithReference(postgresdb)
     .WaitFor(minio)
     .WaitFor(clamav)
     .WaitFor(keycloak)
+    .WaitFor(postgresdb)
     .WithEnvironment("Storage__ServiceUrl", "http://localhost:9000")
     .WithEnvironment("Storage__AccessKey", "admin")
     .WithEnvironment("Storage__SecretKey", "password")

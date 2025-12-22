@@ -1,13 +1,15 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UserSecretsId>bb8468f3-c40a-4ef9-bf9d-ad05ee211ffa</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FileUploader.ServiceDefaults\FileUploader.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\src\FileUploader.Data\FileUploader.Data.csproj" />
   </ItemGroup>
 
   <ItemGroup>
