@@ -2,18 +2,18 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.1.11304.174
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.AppHost", "FileUploader.AppHost\FileUploader.AppHost.csproj", "{5E75D5EF-71DD-4C3E-9D90-F826F43CDFC4}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.ServiceDefaults", "FileUploader.ServiceDefaults\FileUploader.ServiceDefaults.csproj", "{06786225-04D8-8A71-26CA-4E776D627A08}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.ApiService", "FileUploader.ApiService\FileUploader.ApiService.csproj", "{2E3DDF06-D279-F564-30AC-09BBC9AC9601}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{1CD00F91-2013-4FF1-9C4E-49ECFDD77D5E}"
 	ProjectSection(SolutionItems) = preProject
 		.gitignore = .gitignore
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.Data", "src\FileUploader.Data\FileUploader.Data.csproj", "{7C228061-F995-469C-AD54-98E65083335C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.ApiService", "src\server\FileUploader.ApiService\FileUploader.ApiService.csproj", "{53E77879-E892-521C-B523-8133FE0CD63C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.Data", "src\server\FileUploader.Data\FileUploader.Data.csproj", "{EF18300E-4515-9F1B-CDA7-E7A63470A2EC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.ServiceDefaults", "src\server\FileUploader.ServiceDefaults\FileUploader.ServiceDefaults.csproj", "{60F6CA79-1393-3499-4B88-0CA31F2C3642}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.AppHost", "src\server\FileUploader.AppHost\FileUploader.AppHost.csproj", "{2ABB1B6C-A2C5-6FD0-7161-DA785C78A27E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,22 +21,22 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{5E75D5EF-71DD-4C3E-9D90-F826F43CDFC4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5E75D5EF-71DD-4C3E-9D90-F826F43CDFC4}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5E75D5EF-71DD-4C3E-9D90-F826F43CDFC4}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5E75D5EF-71DD-4C3E-9D90-F826F43CDFC4}.Release|Any CPU.Build.0 = Release|Any CPU
-		{06786225-04D8-8A71-26CA-4E776D627A08}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{06786225-04D8-8A71-26CA-4E776D627A08}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{06786225-04D8-8A71-26CA-4E776D627A08}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{06786225-04D8-8A71-26CA-4E776D627A08}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2E3DDF06-D279-F564-30AC-09BBC9AC9601}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2E3DDF06-D279-F564-30AC-09BBC9AC9601}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2E3DDF06-D279-F564-30AC-09BBC9AC9601}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2E3DDF06-D279-F564-30AC-09BBC9AC9601}.Release|Any CPU.Build.0 = Release|Any CPU
-		{7C228061-F995-469C-AD54-98E65083335C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{7C228061-F995-469C-AD54-98E65083335C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{7C228061-F995-469C-AD54-98E65083335C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{7C228061-F995-469C-AD54-98E65083335C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{53E77879-E892-521C-B523-8133FE0CD63C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{53E77879-E892-521C-B523-8133FE0CD63C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{53E77879-E892-521C-B523-8133FE0CD63C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{53E77879-E892-521C-B523-8133FE0CD63C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EF18300E-4515-9F1B-CDA7-E7A63470A2EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EF18300E-4515-9F1B-CDA7-E7A63470A2EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EF18300E-4515-9F1B-CDA7-E7A63470A2EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EF18300E-4515-9F1B-CDA7-E7A63470A2EC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{60F6CA79-1393-3499-4B88-0CA31F2C3642}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{60F6CA79-1393-3499-4B88-0CA31F2C3642}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{60F6CA79-1393-3499-4B88-0CA31F2C3642}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{60F6CA79-1393-3499-4B88-0CA31F2C3642}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2ABB1B6C-A2C5-6FD0-7161-DA785C78A27E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2ABB1B6C-A2C5-6FD0-7161-DA785C78A27E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2ABB1B6C-A2C5-6FD0-7161-DA785C78A27E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2ABB1B6C-A2C5-6FD0-7161-DA785C78A27E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

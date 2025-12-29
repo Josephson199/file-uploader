@@ -17,8 +17,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
+var npgsqlConn = $"Host=localhost,5432;Database={builder.Configuration["POSTGRESDB_DATABASENAME"]};Username={builder.Configuration["POSTGRESDB_USERNAME"]};Password={builder.Configuration["POSTGRESDB_PASSWORD"]}";
+
 builder.Services.AddDbContextPool<AppDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    opt.UseNpgsql(npgsqlConn));
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();

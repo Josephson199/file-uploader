@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Minio;
 using System.Net.Sockets;
 
+// TODO: Switch from data bind mounts to named volumes for Minio, Keycloak, Postgres
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 var dataPath = Path.Combine(builder.Environment.ContentRootPath, ".minio", "data");
@@ -30,8 +32,8 @@ builder.Services.AddHostedService(sp => new MinioBucketInitializer(
 
 // TODO move clam to apphost folder and gitignore relevant paths
 var clamav = builder.AddContainer("clamav", "clamav/clamav:latest")
-    .WithBindMount("../.clam-scan", "/scan")
-    .WithBindMount("../.clam", "/var/lib/clamav")
+    .WithBindMount("./.clam-scan", "/scan")
+    .WithBindMount("./.clam", "/var/lib/clamav")
     .WithEndpoint("clam", e =>
     {
         e.TargetPort = 3310;
@@ -47,6 +49,7 @@ Directory.CreateDirectory(keycloakDataPath);
 
 var username = builder.AddParameter("admin", value: "admin");
 var password = builder.AddParameter("password", value: "password");
+
 var keycloak = builder.AddKeycloak("keycloak", 8080, username, password)
     .WithDataBindMount(keycloakDataPath)
     .WithRealmImport("./.keycloak");
@@ -54,10 +57,11 @@ var keycloak = builder.AddKeycloak("keycloak", 8080, username, password)
 var postgresDataPath = Path.Combine(builder.Environment.ContentRootPath, ".postgres", "data");
 Directory.CreateDirectory(postgresDataPath);
 
-var postgres = builder.AddPostgres("postgres", username, password)
+var postgres = builder.AddPostgres("postgres", username, password, port: 5432)
+     .WithLifetime(ContainerLifetime.Persistent)
      .WithDataBindMount(postgresDataPath);
 
-var postgresdb = postgres.AddDatabase("postgresdb", "postgresdb");
+var postgresdb = postgres.AddDatabase("postgresdb");
 
 var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservice")
     .WithHttpHealthCheck("/health")
@@ -66,7 +70,7 @@ var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservic
     .WithReference(postgresdb)
     .WaitFor(minio)
     .WaitFor(clamav)
-    .WaitFor(keycloak)
+    //.WaitFor(keycloak)
     .WaitFor(postgresdb)
     .WithEnvironment("Storage__ServiceUrl", "http://localhost:9000")
     .WithEnvironment("Storage__AccessKey", "admin")
@@ -75,6 +79,7 @@ var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservic
     // Keycloak settings consumed by the API via Aspire service discovery
     .WithEnvironment("Authentication__Authority", "http://localhost:8080/realms/aspire")
     .WithEnvironment("Authentication__Audience", "spa-client");
+    //.WithEnvironment($"ConnectionStrings__DefaultConnection", "Host=postgres;Database=postgresdb;Username=admin;Password=password");
 
 // Add worker project  for background tasks
 // Find objects in s3 by tags or path.
@@ -82,7 +87,7 @@ var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservic
 // Start clam scan against file
 // Mark s3 object as scanned by tags or by moving s3 object to another path.
 
-builder.AddViteApp(name: "file-upload-app", workingDirectory: "../file-upload-app")
+builder.AddViteApp(name: "file-upload-app", workingDirectory: "../../client/file-upload-app")
     .WithReference(apiService)
     .WaitFor(apiService)
     .WithNpmPackageInstallation()

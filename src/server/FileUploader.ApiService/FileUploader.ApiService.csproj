@@ -8,15 +8,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FileUploader.ServiceDefaults\FileUploader.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\src\FileUploader.Data\FileUploader.Data.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
     <PackageReference Include="nClam" Version="9.0.0" />
     <PackageReference Include="tusdotnet.Stores.S3" Version="2.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FileUploader.Data\FileUploader.Data.csproj" />
+    <ProjectReference Include="..\FileUploader.ServiceDefaults\FileUploader.ServiceDefaults.csproj" />
   </ItemGroup>
 
 </Project>

@@ -4,17 +4,17 @@
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
 # Postgres
-FileUploader.AppHost/.postgres/*
+src/server/FileUploader.AppHost/.postgres/*
 
 # Keycloak
-FileUploader.AppHost/.keycloak/data/*
+src/server/FileUploader.AppHost/.keycloak/data/*
 
 # Minio
-FileUploader.AppHost/.minio/*
+src/server/FileUploader.AppHost/.minio/*
 
 #Clam
-.clam-scan/*
-.clam/*
+src/server/FileUploader.AppHost/.clam-scan/*
+src/server/FileUploader.AppHost/.clam/*
 
 # User-specific files
 *.rsuser
