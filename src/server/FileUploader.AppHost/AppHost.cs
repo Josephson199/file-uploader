@@ -44,15 +44,18 @@ var clamav = builder.AddContainer("clamav", "clamav/clamav:latest")
     });
 
 
-var keycloakDataPath = Path.Combine(builder.Environment.ContentRootPath, ".keycloak", "data");
-Directory.CreateDirectory(keycloakDataPath);
+var keycloakFolder = Path.Combine(builder.Environment.ContentRootPath, ".keycloak"); 
+var keycloakDataPath = Path.Combine(keycloakFolder, "data"); 
+var keycloakRealmPath = Path.Combine(keycloakFolder, "realm"); 
+Directory.CreateDirectory(keycloakDataPath); 
+Directory.CreateDirectory(keycloakRealmPath);
 
 var username = builder.AddParameter("admin", value: "admin");
 var password = builder.AddParameter("password", value: "password");
 
 var keycloak = builder.AddKeycloak("keycloak", 8080, username, password)
     .WithDataBindMount(keycloakDataPath)
-    .WithRealmImport("./.keycloak");
+    .WithRealmImport(keycloakRealmPath);
 
 var postgresDataPath = Path.Combine(builder.Environment.ContentRootPath, ".postgres", "data");
 Directory.CreateDirectory(postgresDataPath);
@@ -63,6 +66,11 @@ var postgres = builder.AddPostgres("postgres", username, password, port: 5432)
 
 var postgresdb = postgres.AddDatabase("postgresdb");
 
+var conn = "Host=localhost,5432;Database=postgresdb;Username=admin;Password=password";
+
+var dbMigrator = builder.AddProject<Projects.FileUploader_DbMigrator>("dbmigrator")
+    .WithEnvironment($"ConnectionStrings__DefaultConnection", conn);
+
 var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservice")
     .WithHttpHealthCheck("/health")
     .WithReference(minio)
@@ -70,16 +78,16 @@ var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservic
     .WithReference(postgresdb)
     .WaitFor(minio)
     .WaitFor(clamav)
-    //.WaitFor(keycloak)
+    .WaitFor(keycloak)
     .WaitFor(postgresdb)
+    .WaitFor(dbMigrator)
     .WithEnvironment("Storage__ServiceUrl", "http://localhost:9000")
     .WithEnvironment("Storage__AccessKey", "admin")
     .WithEnvironment("Storage__SecretKey", "password")
     .WithEnvironment("ClamAv__Uri", () => "tcp://localhost:3310")
-    // Keycloak settings consumed by the API via Aspire service discovery
     .WithEnvironment("Authentication__Authority", "http://localhost:8080/realms/aspire")
-    .WithEnvironment("Authentication__Audience", "spa-client");
-    //.WithEnvironment($"ConnectionStrings__DefaultConnection", "Host=postgres;Database=postgresdb;Username=admin;Password=password");
+    .WithEnvironment("Authentication__Audience", "spa-client")
+    .WithEnvironment($"ConnectionStrings__DefaultConnection", conn);
 
 // Add worker project  for background tasks
 // Find objects in s3 by tags or path.

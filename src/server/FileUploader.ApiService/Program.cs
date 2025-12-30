@@ -17,10 +17,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-var npgsqlConn = $"Host=localhost,5432;Database={builder.Configuration["POSTGRESDB_DATABASENAME"]};Username={builder.Configuration["POSTGRESDB_USERNAME"]};Password={builder.Configuration["POSTGRESDB_PASSWORD"]}";
+//var npgsqlConn = $"Host=localhost,5432;Database={builder.Configuration["POSTGRESDB_DATABASENAME"]};Username={builder.Configuration["POSTGRESDB_USERNAME"]};Password={builder.Configuration["POSTGRESDB_PASSWORD"]}";
+
+/*
+dotnet ef migrations add InitialCreate --project .\src\server\FileUploader.Data\ --startup-project .\src\server\FileUploader.ApiService\
+*/
 
 builder.Services.AddDbContextPool<AppDbContext>(opt =>
-    opt.UseNpgsql(npgsqlConn));
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
@@ -71,7 +75,11 @@ if (app.Environment.IsDevelopment())
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Database.Migrate();
+        if (!db.Database.CanConnect())
+        {
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger.LogCritical("Could not connect to the database. Ensure that the database is running and the connection string is correct.");
+        }
     }
 
     app.MapOpenApi();
@@ -91,7 +99,11 @@ app.UseWhen(
         // Quick debug: log every time we enter the branch
         subApp.Use(async (ctx, next) =>
         {
-            logger.LogTrace("Tus branch for {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
+            if (logger.IsEnabled(LogLevel.Trace))
+            {
+                logger.LogTrace("Tus branch for {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
+            }
+
             await next();
         });
 
@@ -115,8 +127,11 @@ app.UseWhen(
             {
                 OnAuthorizeAsync = async ctx =>
                 {
-                    logger.LogTrace("Tus OnAuthorizeAsync: {Intent} {FileId}",
+                    if (logger.IsEnabled(LogLevel.Trace))
+                    {
+                        logger.LogTrace("Tus OnAuthorizeAsync: {Intent} {FileId}",
                                     ctx.Intent, ctx.FileId);
+                    }
 
                     // Require an authenticated user — Token validation happens via the authentication middleware
                     var user = ctx.HttpContext.User;
@@ -200,7 +215,7 @@ app.UseWhen(
                         var v = item.Value.GetString(Encoding.UTF8);
                         logger.LogInformation($"{k} - {v}");
                     }
-                    
+
                     var clam = new ClamClient(clamUri.Host, clamUri.Port);
                     var content = await file.GetContentAsync(ctx.CancellationToken);
 

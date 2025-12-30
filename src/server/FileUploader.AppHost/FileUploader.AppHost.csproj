@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include=".keycloak\realm.json" />
+    <Content Include=".keycloak\realm\realm.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,8 +25,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FileUploader.ApiService\FileUploader.ApiService.csproj" />
-    <ProjectReference Include="..\FileUploader.Data\FileUploader.Data.csproj" IsAspireProjectResource="false"/>
-    <ProjectReference Include="..\FileUploader.ServiceDefaults\FileUploader.ServiceDefaults.csproj" IsAspireProjectResource="false"/>
+    <ProjectReference Include="..\FileUploader.Data\FileUploader.Data.csproj" IsAspireProjectResource="false" />
+    <ProjectReference Include="..\FileUploader.DbMigrator\FileUploader.DbMigrator.csproj" />
+    <ProjectReference Include="..\FileUploader.ServiceDefaults\FileUploader.ServiceDefaults.csproj" IsAspireProjectResource="false" />
   </ItemGroup>
 
 </Project>
