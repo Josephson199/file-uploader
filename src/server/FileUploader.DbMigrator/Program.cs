@@ -3,25 +3,39 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 using var host = Host.CreateDefaultBuilder(args)
-    .ConfigureAppConfiguration(config =>
-    {
-        config.AddEnvironmentVariables();
-    })
     .ConfigureServices((context, services) =>
     {
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(
-                context.Configuration.GetConnectionString("DefaultConnection")));
+                context.Configuration.GetConnectionString("postgresdb")));
     })
     .Build();
 
-Console.WriteLine("Applying EF Core migrations...");
+await MigrateWithRetryAsync(host.Services);
 
-using var scope = host.Services.CreateScope();
-var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+static async Task MigrateWithRetryAsync(IServiceProvider sp)
+{
+    var logger = sp.GetRequiredService<ILogger<Program>>();
+    var db = sp.GetRequiredService<AppDbContext>();
 
-await db.Database.MigrateAsync();
+    for (var i = 0; i < 10; i++)
+    {
+        try
+        {
+            logger.LogInformation("Attempting database migration...");
+            await db.Database.MigrateAsync();
+            logger.LogInformation("Database migration succeeded.");
+            return;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Migration attempt {Attempt} failed. Retrying...", i + 1);
+            await Task.Delay(3000);
+        }
+    }
 
-Console.WriteLine("Migrations applied successfully.");
+    throw new Exception("Database migration failed after multiple attempts.");
+}

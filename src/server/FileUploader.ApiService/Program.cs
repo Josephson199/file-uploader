@@ -3,7 +3,9 @@ using Amazon.S3;
 using FileUploader.ApiService;
 using FileUploader.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using nClam;
 using System.Security.Claims;
@@ -17,14 +19,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-//var npgsqlConn = $"Host=localhost,5432;Database={builder.Configuration["POSTGRESDB_DATABASENAME"]};Username={builder.Configuration["POSTGRESDB_USERNAME"]};Password={builder.Configuration["POSTGRESDB_PASSWORD"]}";
-
 /*
 dotnet ef migrations add InitialCreate --project .\src\server\FileUploader.Data\ --startup-project .\src\server\FileUploader.ApiService\
 */
 
 builder.Services.AddDbContextPool<AppDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("postgresdb")));
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
@@ -33,13 +33,15 @@ builder.Services.AddOpenApi();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        // Authority should point to Keycloak realm, e.g. http://localhost:8080/realms/aspire
-        options.Authority = builder.Configuration["Authentication:Authority"];
+        var baseUrl = builder.Configuration["Keycloak:BaseUrl"]?.TrimEnd('/');
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl);
+
+        options.Authority = $"{baseUrl}/realms/aspire";
         options.RequireHttpsMetadata = false; // running locally inside containers
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateAudience = true,
-            ValidAudience = builder.Configuration["Authentication:Audience"]
+            ValidAudience = builder.Configuration["Keycloak:Audience"]
         };
     });
 
@@ -59,10 +61,20 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
     return new AmazonS3Client(creds, cfg);
 });
 
+
+
 builder.Services.AddSingleton<FileValidator>();
 builder.Services.AddHostedService<VirusScannerBackgroundService>();
+builder.Services.AddSingleton<TusConfigurationFactory>();
+builder.Services.AddSingleton(sp =>
+{
+    var clamUri = new Uri(builder.Configuration["ClamAv:Uri"]!);
 
-var clamUri = new Uri(builder.Configuration["ClamAv:Uri"]!);
+    return new ClamClient(
+        clamUri.Host!,
+        clamUri.Port);
+});
+
 
 var app = builder.Build();
 
@@ -81,6 +93,10 @@ if (app.Environment.IsDevelopment())
             logger.LogCritical("Could not connect to the database. Ensure that the database is running and the connection string is correct.");
         }
     }
+
+    var s3client = app.Services.GetRequiredService<IAmazonS3>();
+
+    await s3client.EnsureBucketExistsWithRetriesAsync("bucket");
 
     app.MapOpenApi();
 }
@@ -107,29 +123,59 @@ app.UseWhen(
             await next();
         });
 
-        var fileValidator = subApp.ApplicationServices.GetRequiredService<FileValidator>();
+        var tusConfigurationFactory = subApp.ApplicationServices.GetRequiredService<TusConfigurationFactory>();
 
-        subApp.UseTus(httpContext => new DefaultTusConfiguration
+        subApp.UseTus(tusConfigurationFactory.Create);
+    }
+);
+
+async Task<bool> ValidateThatUserOwnsResource(ClaimsPrincipal user, string resourceId)
+{
+    // Look up user in db.
+    // Validate that user has access to resourceId.
+    return true;
+}
+
+app.MapDefaultEndpoints();
+
+app.Run();
+
+public class TusConfigurationFactory
+{
+    private readonly ILogger<TusConfigurationFactory> _logger;
+    private readonly FileValidator _fileValidator;
+    private readonly ClamClient _clamClient;
+
+    public TusConfigurationFactory(ILogger<TusConfigurationFactory> logger, FileValidator fileValidator, ClamClient clamClient)
+    {
+        _logger = logger;
+        _fileValidator = fileValidator;
+        _clamClient = clamClient;
+    }
+
+    public DefaultTusConfiguration Create(HttpContext context)
+    {
+        return new DefaultTusConfiguration
         {
             //MaxAllowedUploadSizeInBytes = 100 * 1024 * 1024 * 10 * 2, // 2gb
             Expiration = new SlidingExpiration(TimeSpan.FromDays(7)),
             UrlPath = "/files",
             Store = new TusS3Store(
-                subApp.ApplicationServices.GetRequiredService<ILogger<TusS3Store>>(),
+                context.RequestServices.GetRequiredService<ILogger<TusS3Store>>(),
                 new TusS3StoreConfiguration
                 {
                     BucketName = "bucket",
-                    FileObjectPrefix = $"uploads/temp/{httpContext.User.FindFirstValue("sub")}",
+                    FileObjectPrefix = $"uploads/temp/{context.User.FindFirstValue("sub")}",
                 },
-                subApp.ApplicationServices.GetRequiredService<IAmazonS3>()
+                context.RequestServices.GetRequiredService<IAmazonS3>()
             ),
             Events = new Events
             {
                 OnAuthorizeAsync = async ctx =>
                 {
-                    if (logger.IsEnabled(LogLevel.Trace))
+                    if (_logger.IsEnabled(LogLevel.Trace))
                     {
-                        logger.LogTrace("Tus OnAuthorizeAsync: {Intent} {FileId}",
+                        _logger.LogTrace("Tus OnAuthorizeAsync: {Intent} {FileId}",
                                     ctx.Intent, ctx.FileId);
                     }
 
@@ -146,13 +192,13 @@ app.UseWhen(
                         string resourceId = ctx.HttpContext.Request.Headers["X-Custom-Header"].Single() ?? string.Empty;
 
                         // Check if the user is authorized to create files for the specified resource
-                        var userOwnsResource = await ValidateThatUserOwnsResource(user, resourceId);
+                        //var userOwnsResource = await ValidateThatUserOwnsResource(user, resourceId);
 
-                        if (!userOwnsResource)
-                        {
-                            ctx.FailRequest(System.Net.HttpStatusCode.Forbidden,
-                                            $"You are not authorized to create files for resource id {resourceId}");
-                        }
+                        //if (!userOwnsResource)
+                        //{
+                        //    ctx.FailRequest(System.Net.HttpStatusCode.Forbidden,
+                        //                    $"You are not authorized to create files for resource id {resourceId}");
+                        //}
                     }
                     else if (ctx.Intent == IntentType.ConcatenateFiles)
                     {
@@ -176,18 +222,18 @@ app.UseWhen(
                     }
                 },
 
-                OnBeforeCreateAsync = fileValidator.BeforeCreate,
+                OnBeforeCreateAsync = _fileValidator.BeforeCreate,
 
                 OnCreateCompleteAsync = ctx =>
                 {
-                    logger.LogInformation("Tus OnCreateCompleteAsync: {FileId}",
+                    _logger.LogInformation("Tus OnCreateCompleteAsync: {FileId}",
                                           ctx.FileId);
 
                     foreach (var item in ctx.Metadata)
                     {
                         var k = item.Key;
                         var v = item.Value.GetString(Encoding.UTF8);
-                        logger.LogInformation($"{k} - {v}");
+                        _logger.LogInformation($"{k} - {v}");
                     }
 
                     var fileName = ctx.Metadata["filename"];
@@ -203,7 +249,7 @@ app.UseWhen(
                 },
                 OnFileCompleteAsync = async ctx =>
                 {
-                    logger.LogInformation("Tus OnFileCompleteAsync: {FileId}",
+                    _logger.LogInformation("Tus OnFileCompleteAsync: {FileId}",
                                           ctx.FileId);
                     var file = await ctx.GetFileAsync();
 
@@ -213,17 +259,16 @@ app.UseWhen(
                     {
                         var k = item.Key;
                         var v = item.Value.GetString(Encoding.UTF8);
-                        logger.LogInformation($"{k} - {v}");
+                        _logger.LogInformation($"{k} - {v}");
                     }
 
-                    var clam = new ClamClient(clamUri.Host, clamUri.Port);
                     var content = await file.GetContentAsync(ctx.CancellationToken);
 
-                    clam.MaxStreamSize = long.MaxValue;
+                    _clamClient.MaxStreamSize = long.MaxValue;
 
                     //var scanResult = await clam.SendAndScanFileAsync(content);
 
-                    var scanResult2 = await clam.ScanFileOnServerAsync("/scan/ccookbook.pdf");
+                    var scanResult2 = await _clamClient.ScanFileOnServerAsync("/scan/ccookbook.pdf");
 
                     if (scanResult2.Result == ClamScanResults.VirusDetected)
                     {
@@ -234,17 +279,6 @@ app.UseWhen(
                     // Mark file as uploaded in database, send notification, etc.
                 }
             }
-        });
+        };
     }
-);
-
-async Task<bool> ValidateThatUserOwnsResource(ClaimsPrincipal user, string resourceId)
-{
-    // Look up user in db.
-    // Validate that user has access to resourceId.
-    return true;
 }
-
-app.MapDefaultEndpoints();
-
-app.Run();
