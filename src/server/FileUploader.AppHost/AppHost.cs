@@ -3,12 +3,12 @@ using System.Net.Sockets;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var dataPath = Path.Combine(builder.Environment.ContentRootPath, ".minio", "data");
-
-Directory.CreateDirectory(dataPath);
-
 var minioUser = builder.AddParameter("minio-user", "admin");
 var minioPass = builder.AddParameter("minio-pass", "password");
+var keycloakUser = builder.AddParameter("keycloak-admin", "admin");
+var keycloakPass = builder.AddParameter("keycloak-password", "password");
+var postgresUser = builder.AddParameter("postgres-user", "admin");
+var postgresPass = builder.AddParameter("postgres-pass", "password");
 
 var minio = builder.AddMinioContainer("s3", port: 9000)
     .WithLifetime(ContainerLifetime.Persistent)
@@ -29,40 +29,30 @@ var clamav = builder.AddContainer("clamav", "clamav/clamav:latest")
         e.IsExternal = true;
     });
 
-var keycloakRealmFolder = Path.Combine(
-    builder.Environment.ContentRootPath, 
-    ".keycloak",
-    "realm");
-
-var keycloakUser = builder.AddParameter("keycloak-admin", value: "admin");
-var keycloakPass = builder.AddParameter("keycloak-password", value: "password");
-
+var keycloakRealmFolder = Path.Combine(builder.Environment.ContentRootPath, ".keycloak", "realm");
 var keycloak = builder.AddKeycloak("keycloak", 8080, keycloakUser, keycloakPass)
     .WithLifetime(ContainerLifetime.Persistent)
     .WithDataVolume("keycloak-volume")
     .WithRealmImport(keycloakRealmFolder);
 
-var postgresUser = builder.AddParameter("postgres-user", "admin"); 
-var postgresPass = builder.AddParameter("postgres-pass", "password");
-
 var postgres = builder.AddPostgres("postgres", postgresUser, postgresPass, port: 5432)
-     .WithLifetime(ContainerLifetime.Persistent)
-     .WithDataVolume("postgres-volume");
+    .WithLifetime(ContainerLifetime.Persistent)
+    .WithDataVolume("postgres-volume");
 
-var postgresdb = postgres.AddDatabase("postgresdb");
+var postgresDb = postgres.AddDatabase("postgresdb");
 
 var dbMigrator = builder.AddProject<Projects.FileUploader_DbMigrator>("dbmigrator")
-    .WithReference(postgresdb);
+    .WithReference(postgresDb);
 
-var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservice")
+var api = builder.AddProject<Projects.FileUploader_ApiService>("api")
     .WithHttpHealthCheck("/health")
     .WithReference(minio)
     .WithReference(keycloak)
-    .WithReference(postgresdb)
+    .WithReference(postgresDb)
     .WaitFor(minio)
     .WaitFor(clamav)
     .WaitFor(keycloak)
-    .WaitFor(postgresdb)
+    .WaitFor(postgresDb)
     .WaitFor(dbMigrator)
     .WithEnvironment("Storage__ServiceUrl", minio.GetEndpoint("http"))
     .WithEnvironment("Storage__AccessKey", minioUser)
@@ -73,12 +63,10 @@ var apiService = builder.AddProject<Projects.FileUploader_ApiService>("apiservic
     .WithEnvironment("Keycloak__Audience", "spa-client");
 
 builder.AddViteApp(name: "file-upload-app", workingDirectory: "../../client/file-upload-app")
-    .WithReference(apiService)
-    .WaitFor(apiService)
+    .WithReference(api)
+    .WaitFor(api)
     .WithNpmPackageInstallation()
     .WithEnvironment("VITE_KEYCLOAK_BASE_URL", keycloak.GetEndpoint("http"))
     .WithEnvironment("VITE_KEYCLOAK_REALM", "aspire");
 
-var aspireApp = builder.Build();
-
-aspireApp.Run();
+await builder.Build().RunAsync();
