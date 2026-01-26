@@ -3,13 +3,13 @@ using Amazon.S3.Model;
 
 namespace FileUploader.ApiService
 {
-    public class VirusScannerBackgroundService : BackgroundService
+    public class PrepareFileForScanWorker : BackgroundService
     {
-        private readonly ILogger<VirusScannerBackgroundService> _logger;
+        private readonly ILogger<PrepareFileForScanWorker> _logger;
         private readonly IAmazonS3 _s3Client;
         private const string BucketName = "bucket";
 
-        public VirusScannerBackgroundService(ILogger<VirusScannerBackgroundService> logger, IAmazonS3 s3Client)
+        public PrepareFileForScanWorker(ILogger<PrepareFileForScanWorker> logger, IAmazonS3 s3Client)
         {
             _logger = logger;
             _s3Client = s3Client;

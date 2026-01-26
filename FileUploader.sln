@@ -4,7 +4,10 @@ VisualStudioVersion = 18.1.11304.174
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{1CD00F91-2013-4FF1-9C4E-49ECFDD77D5E}"
 	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
 		.gitignore = .gitignore
+		Directory.Packages.props = Directory.Packages.props
+		dotnet-tools.json = dotnet-tools.json
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileUploader.ApiService", "src\server\FileUploader.ApiService\FileUploader.ApiService.csproj", "{53E77879-E892-521C-B523-8133FE0CD63C}"
