@@ -17,12 +17,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 /*
-dotnet ef migrations add InitialCreate --project .\src\server\FileUploader.Data\ --startup-project .\src\server\FileUploader.ApiService\
+dotnet ef migrations add InitialCreate --project .\src\server\FileUploader.Data\ --startup-project .\src\server\FileUploader.DbMigrator\
 */
 
 builder.Services.AddDbContextFactory<AppDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("postgresdb")));
-builder.Services.AddDbContextPool<AppDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("postgresdb")));
 
 builder.Services.AddProblemDetails();
@@ -42,6 +40,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidAudience = builder.Configuration["Keycloak:Audience"]
         };
+        options.MapInboundClaims = false;
     });
 
 builder.Services.AddAuthorization();
@@ -62,7 +61,7 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 
 builder.Services.AddSingleton<FileValidator>();
 builder.Services.AddHostedService<VirusScannerWorker>();
-builder.Services.AddHostedService<PrepareFileForScanWorker>();
+builder.Services.AddHostedService<ScanUploadWorker>();
 builder.Services.AddSingleton<TusConfigurationFactory>();
 builder.Services.AddSingleton(sp =>
 {
@@ -80,8 +79,8 @@ app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {
-    var dbFactory = app.Services.GetRequiredService<IDbContextFactory<AppDbContext>>();
-    using var db = await dbFactory.CreateDbContextAsync();
+    using var scope = app.Services.CreateScope();
+    using var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     if (!await db.Database.CanConnectAsync())
     {
         var logger = app.Services.GetRequiredService<ILogger<Program>>();

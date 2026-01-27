@@ -7,12 +7,10 @@ namespace FileUploader.ApiService.Middlewares;
 public class EnsureUserExistsMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly IDbContextFactory<AppDbContext> _dbContextFactory;
 
-    public EnsureUserExistsMiddleware(RequestDelegate next, IDbContextFactory<AppDbContext> dbContextFactory)
+    public EnsureUserExistsMiddleware(RequestDelegate next)
     {
         _next = next;
-        _dbContextFactory = dbContextFactory;
     }
 
     public async Task InvokeAsync(HttpContext context, IServiceProvider services)
@@ -23,7 +21,8 @@ public class EnsureUserExistsMiddleware
 
             if (!string.IsNullOrEmpty(userId))
             {
-                using var db = _dbContextFactory.CreateDbContext();
+                using var scope = services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var exists = await db.Users.AnyAsync(u => u.Sub == userId);
 
                 if (!exists)

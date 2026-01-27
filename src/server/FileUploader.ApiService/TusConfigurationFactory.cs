@@ -24,8 +24,6 @@ public class TusConfigurationFactory
         _clamClient = clamClient;
     }
 
-   
-
     public DefaultTusConfiguration Create(HttpContext context)
     {
         return new DefaultTusConfiguration
@@ -137,40 +135,40 @@ public class TusConfigurationFactory
 
                     var content = await file.GetContentAsync(ctx.CancellationToken);
 
-                    var dbFactory = context.RequestServices.GetRequiredService<IDbContextFactory<AppDbContext>>();
+                    using var scope = context.RequestServices.CreateScope();
+                    using var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                    using (var db = dbFactory.CreateDbContext())
+                    var user = await db.Users
+                        .SingleAsync(u => u.Sub == context.User.FindFirstValue("sub"));
+
+                    var upload = new Upload
                     {
-                        var user = await db.Users
-                            .SingleAsync(u => u.Sub == context.User.FindFirstValue("sub"));
+                        FileName = meta["filename"].GetString(Encoding.UTF8) ?? "unknown",
+                        FileKey = GetFileKey(context, ctx.FileId),
+                        UploadedAt = DateTimeOffset.UtcNow,
+                        User = user,
+                    };
 
-                        var upload = new Upload
-                        {
-                            FileName = meta["filename"].GetString(Encoding.UTF8) ?? "unknown",
-                            FileKey = GetFileKey(context, ctx.FileId),
-                            UploadedAt = DateTimeOffset.UtcNow,
-                            User = user,
-                        };
+                    db.Uploads.Add(upload);
 
-                        db.Uploads.Add(upload);
+                    await db.SaveChangesAsync();
 
-                        var job = new Job
-                        {
-                            CreatedAt = DateTime.UtcNow,
-                            MaxAttempts = 5,
-                            Status = "pending",
-                            Type = "scan-upload",
-                            Payload = System.Text.Json.JsonDocument.Parse($@"{{
+                    var job = new Job
+                    {
+                        CreatedAt = DateTime.UtcNow,
+                        MaxAttempts = 5,
+                        Status = "pending",
+                        Type = "scan-upload",
+                        Payload = System.Text.Json.JsonDocument.Parse($@"{{
                                 ""uploadId"": {upload.UploadId}
                             }}"),
-                            Attempts = 0,
-                            UpdatedAt = DateTime.UtcNow
-                        };
+                        Attempts = 0,
+                        UpdatedAt = DateTime.UtcNow
+                    };
 
-                        db.Jobs.Add(job);
+                    db.Jobs.Add(job);
 
-                        await db.SaveChangesAsync();
-                    }
+                    await db.SaveChangesAsync();
 
 
                     //_clamClient.MaxStreamSize = long.MaxValue;

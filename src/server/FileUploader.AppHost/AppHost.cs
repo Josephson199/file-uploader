@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Minio;
 using System.Net.Sockets;
 
@@ -16,9 +17,11 @@ var minio = builder.AddMinioContainer("s3", port: 9000)
     .WithEnvironment("MINIO_ROOT_PASSWORD", minioPass)
     .WithDataVolume("s3-volume");
 
+var clamScanDir = Path.Combine(builder.Environment.ContentRootPath, ".clam-scan");
+
 var clamav = builder.AddContainer("clamav", "clamav/clamav:latest")
     .WithLifetime(ContainerLifetime.Persistent)
-    .WithBindMount("./.clam-scan", "/scan")
+    .WithBindMount(clamScanDir, "/scan")
     .WithVolume("clamav-volume", "/var/lib/clamav")
     .WithEndpoint("clam", e =>
     {
@@ -58,6 +61,7 @@ var api = builder.AddProject<Projects.FileUploader_ApiService>("api")
     .WithEnvironment("Storage__AccessKey", minioUser)
     .WithEnvironment("Storage__SecretKey", minioPass)
     .WithEnvironment("ClamAv__Uri", "tcp://localhost:3310")
+    .WithEnvironment("ClamAv__ScanDirectory", Path.GetFullPath(clamScanDir))
     .WithEnvironment("Keycloak__BaseUrl", keycloak.GetEndpoint("http"))
     .WithEnvironment("Keycloak__Realm", "aspire")
     .WithEnvironment("Keycloak__Audience", "spa-client");
