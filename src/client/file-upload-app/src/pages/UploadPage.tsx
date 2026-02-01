@@ -2,6 +2,7 @@ import React from 'react';
 import AuthenticationMessage from '../components/AuthenticationMessage';
 import useKeycloak from '../hooks/useKeycloak';
 import Uploader from '../components/Uploader';
+import { FilesList } from '@uppy/react';
 
 const Upload: React.FC = () => {
   const { keycloak, authenticated } = useKeycloak();

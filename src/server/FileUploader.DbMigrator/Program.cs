@@ -14,9 +14,9 @@ using var host = Host.CreateDefaultBuilder(args)
     })
     .Build();
 
-await MigrateWithRetryAsync(host.Services);
+return await MigrateWithRetryAsync(host.Services);
 
-static async Task MigrateWithRetryAsync(IServiceProvider sp)
+static async Task<int> MigrateWithRetryAsync(IServiceProvider sp)
 {
     var logger = sp.GetRequiredService<ILogger<Program>>();
     var db = sp.GetRequiredService<AppDbContext>();
@@ -28,14 +28,14 @@ static async Task MigrateWithRetryAsync(IServiceProvider sp)
             logger.LogInformation("Attempting database migration...");
             await db.Database.MigrateAsync();
             logger.LogInformation("Database migration succeeded.");
-            return;
+            return 0;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Migration attempt {Attempt} failed. Retrying...", i + 1);
-            await Task.Delay(3000);
+            await Task.Delay(5000);
         }
     }
 
-    throw new Exception("Database migration failed after multiple attempts.");
+    return 1;
 }

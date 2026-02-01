@@ -18,7 +18,7 @@ public class Upload
 
     public int UserId { get; set; }
 
-    public required string FileName { get; set; }
+    public required string OrignalFileName { get; set; }
 
     public DateTimeOffset UploadedAt { get; set; }
 
@@ -28,7 +28,9 @@ public class Upload
 
     public User User { get; set; } = default!;
 
-    public required string FileKey { get; set; }
+    public required string ObjectFileKey { get; set; }
+
+    public required string FileId { get; set; }
 }
 
 public class Job
@@ -76,12 +78,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Upload>(entity =>
         {
             entity.HasKey(e => e.UploadId);
-            entity.Property(e => e.FileName)
+            entity.Property(e => e.OrignalFileName)
                 .HasMaxLength(255)
                 .IsRequired();
             entity.Property(e => e.ScanReportRaw)
-                .HasColumnType("jsonb");
-            entity.Property(e => e.FileKey)
+                .HasMaxLength(4000);
+            entity.Property(e => e.ObjectFileKey)
                 .HasMaxLength(1024)
                 .IsRequired();
         });
