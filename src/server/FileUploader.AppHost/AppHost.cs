@@ -10,8 +10,7 @@ using System.Net.Sockets;
 // Add endpoint exposing file validation rules to shared with client app
 // Add string error message on jobs.
 // Add some sort of domain, maybe healthcare.
-// Clean up tusconf factory
-// Read keycloak conf from file endpoint instead hardcoded in client
+// List files in client
 
 var builder = DistributedApplication.CreateBuilder(args);
 

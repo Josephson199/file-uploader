@@ -65,76 +65,157 @@ public class TusConfigurationFactory
                         return;
                     }
 
+                    var currentSub = user.FindFirstValue("sub");
+                    if (string.IsNullOrWhiteSpace(currentSub))
+                    {
+                        ctx.FailRequest(System.Net.HttpStatusCode.Unauthorized, "sub claim missing");
+                        return;
+                    }
+
+                    // Allow creation for authenticated users
                     if (ctx.Intent == IntentType.CreateFile)
                     {
-                        string resourceId = ctx.HttpContext.Request.Headers["X-Custom-Header"].Single() ?? string.Empty;
+                        _logger.LogDebug("Authorize CreateFile for user {Sub} FileId={FileId}", currentSub, ctx.FileId);
+                        return;
+                    }
 
-                        // Check if the user is authorized to create files for the specified resource
-                        //var userOwnsResource = await ValidateThatUserOwnsResource(user, resourceId);
+                    // For other intents require ownership. Check persisted Upload first.
+                    try
+                    {
+                        using var scope = ctx.HttpContext.RequestServices.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                        //if (!userOwnsResource)
-                        //{
-                        //    ctx.FailRequest(System.Net.HttpStatusCode.Forbidden,
-                        //                    $"You are not authorized to create files for resource id {resourceId}");
-                        //}
+                        var upload = await db.Uploads
+                            .Include(u => u.User)
+                            .SingleOrDefaultAsync(u => u.FileId == ctx.FileId, ctx.CancellationToken);
+
+                        if (upload != null)
+                        {
+                            var ownerSub = upload.User?.Sub;
+                            if (ownerSub != currentSub)
+                            {
+                                _logger.LogWarning("Unauthorized access attempt by {Sub} on file {FileId} owned by {OwnerSub}", currentSub, ctx.FileId, ownerSub);
+                                ctx.FailRequest(System.Net.HttpStatusCode.Forbidden, "You are not the owner of this file");
+                                return;
+                            }
+
+                            _logger.LogDebug("Authorized {Intent} for owner {Sub} on file {FileId}", ctx.Intent, currentSub, ctx.FileId);
+                            return;
+                        }
+
+                        // If no Upload exists yet, check UploadCandidate created at create-time.
+                        var candidate = await db.UploadCandidates
+                            .Include(c => c.OwnerUser)
+                            .SingleOrDefaultAsync(c => c.FileId == ctx.FileId, ctx.CancellationToken);
+
+                        if (candidate != null)
+                        {
+                            if (candidate.OwnerUser?.Sub != currentSub)
+                            {
+                                _logger.LogWarning("Unauthorized access attempt by {Sub} on candidate {FileId} owned by {OwnerSub}", currentSub, ctx.FileId, candidate.OwnerUser?.Sub);
+                                ctx.FailRequest(System.Net.HttpStatusCode.Forbidden, "You are not the owner of this upload");
+                                return;
+                            }
+
+                            _logger.LogDebug("Authorized {Intent} for candidate owner {Sub} on file {FileId}", ctx.Intent, currentSub, ctx.FileId);
+                            return;
+                        }
+
+                        // No upload or candidate found — deny.
+                        _logger.LogWarning("No Upload or UploadCandidate found for FileId {FileId} — denying access for {Sub}", ctx.FileId, currentSub);
+                        ctx.FailRequest(System.Net.HttpStatusCode.Forbidden, "You are not the owner of this upload");
                     }
-                    else if (ctx.Intent == IntentType.ConcatenateFiles)
+                    catch (Exception ex)
                     {
-                        // Check if the user is authorized to upload a chunk to the file ctx.FileId
-                        // If not, set ctx.FailRequest() with appropriate status code
-                    }
-                    else if (ctx.Intent == IntentType.GetFileInfo)
-                    {
-                        // Check if the user is authorized to get info on the file ctx.FileId
-                        // If not, set ctx.FailRequest() with appropriate status code
-                    }
-                    else if (ctx.Intent == IntentType.DeleteFile)
-                    {
-                        // Check if the user is authorized to delete the file ctx.FileId
-                        // If not, set ctx.FailRequest() with appropriate status code
-                    }
-                    else if (ctx.Intent == IntentType.WriteFile)
-                    {
-                        // Check if the user is authorized to upload a chunk to the file ctx.FileId
-                        // If not, set ctx.FailRequest() with appropriate status code
+                        _logger.LogError(ex, "Error while checking upload owner for file {FileId}", ctx.FileId);
+                        ctx.FailRequest(System.Net.HttpStatusCode.Forbidden, "Unable to verify file owner");
                     }
                 },
 
                 OnBeforeCreateAsync = _fileValidator.BeforeCreate,
 
-                OnCreateCompleteAsync = ctx =>
+                // Create an UploadCandidate record when the tus file resource is created.
+                OnCreateCompleteAsync = async ctx =>
                 {
-                    _logger.LogInformation("Tus OnCreateCompleteAsync: {FileId}",
-                                          ctx.FileId);
-                    return Task.CompletedTask;
+                    _logger.LogInformation("Tus OnCreateCompleteAsync: {FileId}", ctx.FileId);
+
+                    var user = ctx.HttpContext.User;
+                    var sub = user.FindFirstValue("sub") ?? string.Empty;
+
+                    try
+                    {
+                        using var scope = ctx.HttpContext.RequestServices.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                        var owner = await db.Users.SingleOrDefaultAsync(u => u.Sub == sub, ctx.CancellationToken);
+                        if (owner == null)
+                        {
+                            owner = new User { Sub = sub };
+                            db.Users.Add(owner);
+                            await db.SaveChangesAsync(ctx.CancellationToken);
+                        }
+
+                        var candidate = new UploadCandidate
+                        {
+                            FileId = ctx.FileId,
+                            OwnerUserId = owner.UserId,
+                            ObjectFileKey = CreateObjectFileKey(ctx.HttpContext, ctx.FileId),
+                            CreatedAt = DateTimeOffset.UtcNow
+                        };
+
+                        db.UploadCandidates.Add(candidate);
+                        await db.SaveChangesAsync(ctx.CancellationToken);
+
+                        _logger.LogDebug("Created UploadCandidate for FileId={FileId} OwnerUserId={OwnerUserId}", ctx.FileId, owner.UserId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to create UploadCandidate for FileId={FileId}", ctx.FileId);
+                    }
                 },
+
                 OnFileCompleteAsync = async ctx =>
                 {
-                    _logger.LogInformation("Tus OnFileCompleteAsync: {FileId}",
-                                          ctx.FileId);
+                    _logger.LogInformation("Tus OnFileCompleteAsync: {FileId}", ctx.FileId);
 
                     ITusFile file = await ctx.GetFileAsync();
 
                     Dictionary<string, Metadata> meta = await file.GetMetadataAsync(ctx.CancellationToken);
 
-                    using var scope = context.RequestServices.CreateScope();
+                    using var scope = ctx.HttpContext.RequestServices.CreateScope();
                     using var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                    var user = await db.Users
-                        .SingleAsync(u => u.Sub == context.User.FindFirstValue("sub"));
+                    var sub = ctx.HttpContext.User.FindFirstValue("sub");
+                    var user = await db.Users.SingleAsync(u => u.Sub == sub, ctx.CancellationToken);
+
+                    // Find candidate (created on OnCreateCompleteAsync)
+                    var candidate = await db.UploadCandidates
+                        .Include(c => c.OwnerUser)
+                        .SingleOrDefaultAsync(c => c.FileId == ctx.FileId, ctx.CancellationToken);
+
+                    if (candidate == null)
+                    {
+                        _logger.LogWarning("No UploadCandidate found for FileId={FileId}. Proceeding but this may indicate a mismatch.", ctx.FileId);
+                    }
 
                     var upload = new Upload
                     {
                         FileId = ctx.FileId,
-                        OrignalFileName = meta["filename"].GetString(Encoding.UTF8) ?? "unknown",
-                        ObjectFileKey = CreateObjectFileKey(context, ctx.FileId),
+                        OrignalFileName = meta.ContainsKey("filename") ? meta["filename"].GetString(Encoding.UTF8) ?? "unknown" : "unknown",
+                        ObjectFileKey = candidate?.ObjectFileKey ?? CreateObjectFileKey(ctx.HttpContext, ctx.FileId),
                         UploadedAt = DateTimeOffset.UtcNow,
                         User = user,
                     };
 
                     db.Uploads.Add(upload);
 
-                    await db.SaveChangesAsync();
+                    // remove candidate if present
+                    if (candidate != null)
+                    {
+                        db.UploadCandidates.Remove(candidate);
+                    }
+
+                    await db.SaveChangesAsync(ctx.CancellationToken);
 
                     var job = new Job
                     {
@@ -151,7 +232,9 @@ public class TusConfigurationFactory
 
                     db.Jobs.Add(job);
 
-                    await db.SaveChangesAsync();
+                    await db.SaveChangesAsync(ctx.CancellationToken);
+
+                    _logger.LogInformation("Created Upload and Job for FileId={FileId} UploadId={UploadId}", ctx.FileId, upload.UploadId);
                 }
             }
         };

@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FileUploader.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260211114307_InitialCreate")]
+    [Migration("20260211144800_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -71,33 +71,6 @@ namespace FileUploader.Data.Migrations
                     b.ToTable("Jobs");
                 });
 
-            modelBuilder.Entity("FileUploader.Data.Project", b =>
-                {
-                    b.Property<int>("ProjectId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ProjectId"));
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<int>("OwnerUserId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("ProjectId");
-
-                    b.HasIndex("OwnerUserId");
-
-                    b.ToTable("Project");
-                });
-
             modelBuilder.Entity("FileUploader.Data.Upload", b =>
                 {
                     b.Property<int>("UploadId")
@@ -108,7 +81,8 @@ namespace FileUploader.Data.Migrations
 
                     b.Property<string>("FileId")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("ObjectFileKey")
                         .IsRequired()
@@ -121,8 +95,7 @@ namespace FileUploader.Data.Migrations
                         .HasColumnType("character varying(255)");
 
                     b.Property<string>("ScanReportRaw")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("jsonb");
 
                     b.Property<DateTimeOffset>("UploadedAt")
                         .HasColumnType("timestamp with time zone");
@@ -135,9 +108,45 @@ namespace FileUploader.Data.Migrations
 
                     b.HasKey("UploadId");
 
+                    b.HasIndex("FileId")
+                        .IsUnique();
+
                     b.HasIndex("UserId");
 
                     b.ToTable("Uploads");
+                });
+
+            modelBuilder.Entity("FileUploader.Data.UploadCandidate", b =>
+                {
+                    b.Property<int>("UploadCandidateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("UploadCandidateId"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ObjectFileKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<int>("OwnerUserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("UploadCandidateId");
+
+                    b.HasIndex("FileId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.ToTable("UploadCandidates");
                 });
 
             modelBuilder.Entity("FileUploader.Data.User", b =>
@@ -161,17 +170,6 @@ namespace FileUploader.Data.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("FileUploader.Data.Project", b =>
-                {
-                    b.HasOne("FileUploader.Data.User", "OwnerUser")
-                        .WithMany("Projects")
-                        .HasForeignKey("OwnerUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("OwnerUser");
-                });
-
             modelBuilder.Entity("FileUploader.Data.Upload", b =>
                 {
                     b.HasOne("FileUploader.Data.User", "User")
@@ -183,9 +181,20 @@ namespace FileUploader.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("FileUploader.Data.UploadCandidate", b =>
+                {
+                    b.HasOne("FileUploader.Data.User", "OwnerUser")
+                        .WithMany("UploadCandidates")
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("OwnerUser");
+                });
+
             modelBuilder.Entity("FileUploader.Data.User", b =>
                 {
-                    b.Navigation("Projects");
+                    b.Navigation("UploadCandidates");
 
                     b.Navigation("Uploads");
                 });

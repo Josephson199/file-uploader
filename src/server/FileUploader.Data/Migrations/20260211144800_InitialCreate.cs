@@ -48,20 +48,21 @@ namespace FileUploader.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Project",
+                name: "UploadCandidates",
                 columns: table => new
                 {
-                    ProjectId = table.Column<int>(type: "integer", nullable: false)
+                    UploadCandidateId = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    FileId = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
                     OwnerUserId = table.Column<int>(type: "integer", nullable: false),
-                    Name = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
-                    Description = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true)
+                    ObjectFileKey = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Project", x => x.ProjectId);
+                    table.PrimaryKey("PK_UploadCandidates", x => x.UploadCandidateId);
                     table.ForeignKey(
-                        name: "FK_Project_Users_OwnerUserId",
+                        name: "FK_UploadCandidates_Users_OwnerUserId",
                         column: x => x.OwnerUserId,
                         principalTable: "Users",
                         principalColumn: "UserId",
@@ -78,9 +79,9 @@ namespace FileUploader.Data.Migrations
                     OrignalFileName = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     UploadedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     VirusDetected = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    ScanReportRaw = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: true),
+                    ScanReportRaw = table.Column<string>(type: "jsonb", nullable: true),
                     ObjectFileKey = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: false),
-                    FileId = table.Column<string>(type: "text", nullable: false)
+                    FileId = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -94,9 +95,21 @@ namespace FileUploader.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_Project_OwnerUserId",
-                table: "Project",
+                name: "IX_UploadCandidates_FileId",
+                table: "UploadCandidates",
+                column: "FileId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UploadCandidates_OwnerUserId",
+                table: "UploadCandidates",
                 column: "OwnerUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Uploads_FileId",
+                table: "Uploads",
+                column: "FileId",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Uploads_UserId",
@@ -117,7 +130,7 @@ namespace FileUploader.Data.Migrations
                 name: "Jobs");
 
             migrationBuilder.DropTable(
-                name: "Project");
+                name: "UploadCandidates");
 
             migrationBuilder.DropTable(
                 name: "Uploads");

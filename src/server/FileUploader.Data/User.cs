@@ -3,18 +3,14 @@ using System.Text.Json;
 
 namespace FileUploader.Data;
 
-public class Project
+public static class JobStatus
 {
-    public int ProjectId { get; set; }
-
-    public int OwnerUserId { get; set; }
-
-    public User OwnerUser { get; set; } = null!;
-
-    public required string Name { get; set; }
-
-    public string? Description { get; set; }
+    public const string Pending = "pending";
+    public const string Processing = "processing";
+    public const string Completed = "completed";
+    public const string Failed = "failed";
 }
+public record VirusScanPayload(int UploadId);
 
 public class User
 {
@@ -24,7 +20,7 @@ public class User
 
     public List<Upload> Uploads { get; set; } = [];
 
-    public List<Project> Projects { get; set; } = [];
+    public List<UploadCandidate> UploadCandidates { get; set; } = [];
 }
 
 public class Upload
@@ -48,6 +44,24 @@ public class Upload
     public required string FileId { get; set; }
 }
 
+public class UploadCandidate
+{
+    public int UploadCandidateId { get; set; }
+
+    public required string FileId { get; set; }
+
+    // Owner FK to User
+    public int OwnerUserId { get; set; }
+
+    // Navigation to the owning User
+    public User OwnerUser { get; set; } = default!;
+
+    // Optional key where the temporary object is stored by the tus S3 store
+    public string? ObjectFileKey { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
 public class Job
 {
     public long Id { get; set; }
@@ -56,7 +70,7 @@ public class Job
 
     public JsonDocument Payload { get; set; } = default!;
 
-    public string Status { get; set; } = JobStatus.Pending;
+    public string Status { get; set; } = "pending";
 
     public int Attempts { get; set; } = 0;
     public int MaxAttempts { get; set; } = 5;
@@ -68,19 +82,15 @@ public class Job
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-public static class JobStatus
-{
-    public const string Pending = "pending";
-    public const string Processing = "processing";
-    public const string Completed = "completed";
-    public const string Failed = "failed";
-}
-public record VirusScanPayload(int UploadId);
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users { get; set; }
     public DbSet<Upload> Uploads { get; set; }
+
+    // New DbSet for upload candidates
+    public DbSet<UploadCandidate> UploadCandidates { get; set; }
+
     public DbSet<Job> Jobs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -94,11 +104,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(e => e.Sub)
                 .IsUnique();
             entity.HasMany(e => e.Uploads)
-                .WithOne(e => e.User)
-                .HasForeignKey(e => e.UserId);
-            entity.HasMany(e => e.Projects)
-                .WithOne(p => p.OwnerUser)
-                .HasForeignKey(p => p.OwnerUserId);
+                  .WithOne(e => e.User)
+                  .HasForeignKey(e => e.UserId);
+
+            entity.HasMany(e => e.UploadCandidates)
+                  .WithOne(e => e.OwnerUser)
+                  .HasForeignKey(e => e.OwnerUserId);
         });
 
         modelBuilder.Entity<Upload>(entity =>
@@ -108,10 +119,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .HasMaxLength(255)
                 .IsRequired();
             entity.Property(e => e.ScanReportRaw)
-                .HasMaxLength(4000);
+                .HasColumnType("jsonb");
             entity.Property(e => e.ObjectFileKey)
                 .HasMaxLength(1024)
                 .IsRequired();
+            entity.Property(e => e.FileId)
+                .HasMaxLength(128)
+                .IsRequired();
+            entity.HasIndex(e => e.FileId)
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<UploadCandidate>(entity =>
+        {
+            entity.HasKey(e => e.UploadCandidateId);
+            entity.Property(e => e.FileId)
+                .HasMaxLength(128)
+                .IsRequired();
+            entity.HasIndex(e => e.FileId)
+                .IsUnique();
+            entity.Property(e => e.OwnerUserId)
+                .IsRequired();
+            entity.Property(e => e.ObjectFileKey)
+                .HasMaxLength(1024);
         });
 
         modelBuilder.Entity<Job>(entity =>
@@ -126,16 +156,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.Payload)
                 .HasColumnType("jsonb")
                 .IsRequired();
-        });
-
-        modelBuilder.Entity<Project>(entity =>
-        {
-            entity.HasKey(e => e.ProjectId);
-            entity.Property(e => e.Name)
-                .HasMaxLength(128)
-                .IsRequired();
-            entity.Property(e => e.Description)
-                .HasMaxLength(2000);
         });
     }
 }
