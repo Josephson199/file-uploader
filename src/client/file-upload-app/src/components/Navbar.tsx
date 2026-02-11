@@ -29,7 +29,7 @@ const NavBar: React.FC<NavBarProps> = () => {
         </Typography>
         {authenticated ? (
           <>
-            <Button color="inherit" component={Link} to="/upload">
+            <Button color="inherit" component={Link} to="/uploads">
               My Uploads
             </Button>
             <Button color="inherit" onClick={handleLogout}>

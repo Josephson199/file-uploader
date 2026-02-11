@@ -1,0 +1,54 @@
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace FileUploader.Data.Migrations
+{
+    public partial class AddJobUpdateNotifyTrigger : Migration
+    {
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            // Create the trigger function
+            migrationBuilder.Sql(@"
+                CREATE OR REPLACE FUNCTION notify_job_update()
+                RETURNS trigger AS $$
+                DECLARE
+                    payload JSON;
+                BEGIN
+                    payload = json_build_object(
+                        'id', NEW.""JobId"",
+                        'type', NEW.""Type"",
+                        'status', NEW.""Status"",
+                        'attempts', NEW.""Attempts"",
+                        'maxAttempts', NEW.""MaxAttempts"",
+                        'lockedAt', NEW.""LockedAt"",
+                        'lockedBy', NEW.""LockedBy"",
+                        'createdAt', NEW.""CreatedAt"",
+                        'updatedAt', NEW.""UpdatedAt"",
+                        'payload', NEW.""Payload""
+                    );
+
+                    PERFORM pg_notify('job_updates', payload::text);
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            ");
+
+            migrationBuilder.Sql(@"
+                CREATE TRIGGER job_update_trigger
+                AFTER UPDATE ON ""Jobs""
+                FOR EACH ROW
+                WHEN (OLD.""Status"" IS DISTINCT FROM NEW.""Status"")
+                EXECUTE FUNCTION notify_job_update();
+            ");
+
+        }
+
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.Sql(@"DROP TRIGGER IF EXISTS job_update_trigger ON Jobs;");
+            migrationBuilder.Sql(@"DROP FUNCTION IF EXISTS notify_job_update();");
+        }
+    }
+
+}

@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using System.Text.Json;
 using tusdotnet;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,6 +64,9 @@ builder.Services.Configure<UploadOptions>(
     builder.Configuration.GetSection("Upload"));
 builder.Services.AddSingleton<TusConfigurationFactory>();
 
+builder.Services.AddSingleton<EventStream>();
+builder.Services.AddHostedService<JobUpdateListener>();
+
 var app = builder.Build();
 
 app.UseExceptionHandler();
@@ -84,10 +88,52 @@ await s3client.EnsureBucketExistsWithRetriesAsync("bucket");
 
 app.MapOpenApi();
 
-
 app.UseAuthentication();
 app.UseMiddleware<EnsureUserExistsMiddleware>();
 app.UseAuthorization();
+
+app.MapGet("/files-list", async (AppDbContext db, CancellationToken ct) =>
+{
+    var files = await db.Uploads
+        .OrderByDescending(u => u.UploadedAt)
+        .Select(u => new { u.UploadId, u.FileId, u.OrignalFileName, u.UploadedAt, u.VirusDetected })
+        .ToArrayAsync(ct);
+
+    return Results.Ok(files);
+})
+.RequireAuthorization();
+
+app.MapGet("/events", async (HttpContext context, EventStream stream, AppDbContext db) =>
+{
+    var sub = context.User.FindFirstValue("sub");
+
+    ArgumentException.ThrowIfNullOrWhiteSpace(sub);
+
+    context.Response.Headers.Append("Content-Type", "text/event-stream");
+    context.Response.Headers.Append("Cache-Control", "no-cache");
+    context.Response.Headers.Append("X-Accel-Buffering", "no"); // Disable buffering for Nginx
+
+    await foreach (var message in stream.Subscribe(context.RequestAborted))
+    {
+        var msg = JsonSerializer.Deserialize<Job>(message);
+        if (msg is not null && msg.Type == "virus-scan")
+        {
+            var user = await db.Users.SingleAsync(u => u.Sub == sub, context.RequestAborted);
+
+            var payload = JsonSerializer.Deserialize<VirusScanPayload>(msg.Payload);
+
+            ArgumentNullException.ThrowIfNull(payload);
+
+            if (payload.UserId == user.UserId)
+            {
+                await context.Response.WriteAsync($"data: {message}\n\n", context.RequestAborted);
+                await context.Response.Body.FlushAsync(context.RequestAborted);
+            }
+        }
+    }
+})
+.RequireAuthorization();
+
 
 // Branch ALL requests that start with /files into Tus
 app.UseWhen(

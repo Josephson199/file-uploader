@@ -19,7 +19,7 @@ function AppRoutes() {
               </Layout>
             }
           />
-          <Route path="/upload" element={<Layout><Upload /></Layout>} />
+          <Route path="/uploads" element={<Layout><Upload /></Layout>} />
         </Routes>
       </BrowserRouter>
     </KeycloakProvider>

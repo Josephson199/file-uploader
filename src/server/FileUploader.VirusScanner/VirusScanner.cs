@@ -65,7 +65,7 @@ public class VirusScanner : BackgroundService
                     continue;
                 }
 
-                _logger.LogInformation("Dequeued job {JobId} (attempts={Attempts})", job.Id, job.Attempts);
+                _logger.LogInformation("Dequeued job {JobId} (attempts={Attempts})", job.JobId, job.Attempts);
                 await ProcessJobSafe(db, job, stoppingToken);
             }
             catch (OperationCanceledException)
@@ -90,7 +90,7 @@ public class VirusScanner : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing job {JobId}", job.Id);
+            _logger.LogError(ex, "Error processing job {JobId}", job.JobId);
 
             job.Status = JobStatus.Failed;
             job.UpdatedAt = DateTimeOffset.UtcNow;
@@ -98,23 +98,23 @@ public class VirusScanner : BackgroundService
             try
             {
                 await db.SaveChangesAsync(ct);
-                _logger.LogInformation("Marked job {JobId} as failed in DB", job.Id);
+                _logger.LogInformation("Marked job {JobId} as failed in DB", job.JobId);
             }
             catch (Exception saveEx)
             {
-                _logger.LogError(saveEx, "Failed to save failed status for job {JobId}", job.Id);
+                _logger.LogError(saveEx, "Failed to save failed status for job {JobId}", job.JobId);
             }
         }
     }
 
     private async Task ProcessJob(AppDbContext db, Job job, CancellationToken ct)
     {
-        _logger.LogInformation("Processing job {JobId}", job.Id);
+        _logger.LogInformation("Processing job {JobId}", job.JobId);
 
-        _logger.LogDebug("Deserializing payload for job {JobId}", job.Id);
+        _logger.LogDebug("Deserializing payload for job {JobId}", job.JobId);
         var payload = JsonSerializer.Deserialize<VirusScanPayload>(job.Payload!, s_jsonSerializerOptions)
             ?? throw new InvalidOperationException("Invalid job payload");
-        _logger.LogDebug("Payload deserialized for job {JobId}: UploadId={UploadId}", job.Id, payload.UploadId);
+        _logger.LogDebug("Payload deserialized for job {JobId}: UploadId={UploadId}", job.JobId, payload.UploadId);
 
         _logger.LogDebug("Loading upload record UploadId={UploadId}", payload.UploadId);
         var upload = await db.Uploads
@@ -123,7 +123,7 @@ public class VirusScanner : BackgroundService
 
         if (upload == null)
         {
-            _logger.LogWarning("Upload {UploadId} not found for job {JobId}", payload.UploadId, job.Id);
+            _logger.LogWarning("Upload {UploadId} not found for job {JobId}", payload.UploadId, job.JobId);
             throw new InvalidOperationException($"Upload {payload.UploadId} not found");
         }
         _logger.LogInformation("Found upload {UploadId} (FileId={FileId}, OriginalName={OriginalName})", upload.UploadId, upload.FileId, upload.OrignalFileName);
@@ -171,7 +171,7 @@ public class VirusScanner : BackgroundService
                 _logger.LogInformation("ClamAV scan completed for {FileId}. Result={Result}", upload.FileId, scanResult.Result);
                 _logger.LogDebug("ClamAV raw result length: {Len}", scanResult.RawResult?.Length ?? 0);
 
-                upload.ScanReportRaw = scanResult.RawResult.Replace("\0", "");
+                upload.ScanReportRaw = scanResult.RawResult?.Replace("\0", "");
                 upload.VirusDetected = scanResult.Result == ClamScanResults.VirusDetected ? DateTimeOffset.UtcNow : null;
             }
             else
@@ -182,7 +182,7 @@ public class VirusScanner : BackgroundService
                 _logger.LogInformation("ClamAV scan completed for {FileId}. Result={Result}", upload.FileId, scanResult.Result);
                 _logger.LogDebug("ClamAV raw result length: {Len}", scanResult.RawResult?.Length ?? 0);
 
-                upload.ScanReportRaw = scanResult.RawResult;
+                upload.ScanReportRaw = scanResult.RawResult?.Replace("\0", "");
                 upload.VirusDetected = scanResult.Result == ClamScanResults.VirusDetected ? DateTimeOffset.UtcNow : null;
             }
 
@@ -229,9 +229,9 @@ public class VirusScanner : BackgroundService
             job.Status = JobStatus.Completed;
             job.UpdatedAt = DateTimeOffset.UtcNow;
 
-            _logger.LogDebug("Marking job {JobId} completed and saving DB", job.Id);
+            _logger.LogDebug("Marking job {JobId} completed and saving DB", job.JobId);
             await db.SaveChangesAsync(ct);
-            _logger.LogInformation("Job {JobId} completed successfully", job.Id);
+            _logger.LogInformation("Job {JobId} completed successfully", job.JobId);
         }
         finally
         {
@@ -422,7 +422,7 @@ public class VirusScanner : BackgroundService
                 FROM ""Jobs""
                 WHERE ""Status"" = {JobStatus.Pending}
                   AND ""Type"" = 'virus-scan'
-                ORDER BY ""Id""
+                ORDER BY ""JobId""
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1")
             .FirstOrDefaultAsync(ct);

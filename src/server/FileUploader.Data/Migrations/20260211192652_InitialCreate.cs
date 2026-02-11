@@ -17,7 +17,7 @@ namespace FileUploader.Data.Migrations
                 name: "Jobs",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    JobId = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     Type = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     Payload = table.Column<JsonDocument>(type: "jsonb", nullable: false),
@@ -31,7 +31,7 @@ namespace FileUploader.Data.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Jobs", x => x.Id);
+                    table.PrimaryKey("PK_Jobs", x => x.JobId);
                 });
 
             migrationBuilder.CreateTable(

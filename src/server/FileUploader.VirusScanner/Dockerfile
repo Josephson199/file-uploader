@@ -25,4 +25,4 @@ WORKDIR /app
 COPY --from=build /app/publish .
 
 ENTRYPOINT ["dotnet", "FileUploader.VirusScanner.dll"]
-# f2f
+# f2fffae

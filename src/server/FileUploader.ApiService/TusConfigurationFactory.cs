@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using tusdotnet.Interfaces;
 using tusdotnet.Models;
 using tusdotnet.Models.Configuration;
@@ -22,13 +23,16 @@ public class TusConfigurationFactory
 {
     private readonly ILogger<TusConfigurationFactory> _logger;
     private readonly FileValidator _fileValidator;
-    private readonly IOptions<UploadOptions> _uploadOptions;
 
-    public TusConfigurationFactory(ILogger<TusConfigurationFactory> logger, FileValidator fileValidator, IOptions<UploadOptions> uploadOptions)
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    public TusConfigurationFactory(ILogger<TusConfigurationFactory> logger, FileValidator fileValidator)
     {
         _logger = logger;
         _fileValidator = fileValidator;
-        _uploadOptions = uploadOptions;
     }
 
     public DefaultTusConfiguration Create(HttpContext context)
@@ -223,9 +227,7 @@ public class TusConfigurationFactory
                         MaxAttempts = 5,
                         Status = "pending",
                         Type = "virus-scan",
-                        Payload = System.Text.Json.JsonDocument.Parse($@"{{
-                                ""uploadId"": {upload.UploadId}
-                            }}"),
+                        Payload = JsonSerializer.SerializeToDocument(new VirusScanPayload(upload.UploadId, user.UserId), options: s_jsonOptions),
                         Attempts = 0,
                         UpdatedAt = DateTimeOffset.UtcNow
                     };

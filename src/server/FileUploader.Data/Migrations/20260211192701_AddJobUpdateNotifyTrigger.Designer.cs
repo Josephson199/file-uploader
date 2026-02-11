@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FileUploader.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260211144800_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260211192701_AddJobUpdateNotifyTrigger")]
+    partial class AddJobUpdateNotifyTrigger
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -28,11 +28,11 @@ namespace FileUploader.Data.Migrations
 
             modelBuilder.Entity("FileUploader.Data.Job", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<long>("JobId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("JobId"));
 
                     b.Property<int>("Attempts")
                         .HasColumnType("integer");
@@ -66,7 +66,7 @@ namespace FileUploader.Data.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("Id");
+                    b.HasKey("JobId");
 
                     b.ToTable("Jobs");
                 });

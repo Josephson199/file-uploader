@@ -10,7 +10,8 @@ public static class JobStatus
     public const string Completed = "completed";
     public const string Failed = "failed";
 }
-public record VirusScanPayload(int UploadId);
+
+public record VirusScanPayload(int UploadId, int UserId);
 
 public class User
 {
@@ -64,7 +65,7 @@ public class UploadCandidate
 
 public class Job
 {
-    public long Id { get; set; }
+    public long JobId { get; set; }
 
     public string Type { get; set; } = default!;
 
@@ -146,7 +147,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<Job>(entity =>
         {
-            entity.HasKey(e => e.Id);
+            entity.HasKey(e => e.JobId);
             entity.Property(e => e.Type)
                 .HasMaxLength(100)
                 .IsRequired();
