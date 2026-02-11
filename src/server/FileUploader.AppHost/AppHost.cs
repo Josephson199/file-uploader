@@ -1,6 +1,15 @@
+using Aspire.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Minio;
 using System.Net.Sockets;
+
+// TODOS
+// Add postgress as distributed cache
+// Add Timeprovider
+// Add Orthanc
+// Add endpoint exposing file validation rules to shared with client app
+// Add string error message on jobs.
+// Add some sort of domain, maybe healthcare.
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -17,11 +26,9 @@ var minio = builder.AddMinioContainer("s3", port: 9000)
     .WithEnvironment("MINIO_ROOT_PASSWORD", minioPass)
     .WithDataVolume("s3-volume");
 
-var clamScanDir = Path.Combine(builder.Environment.ContentRootPath, ".clam-scan");
-
 var clamav = builder.AddContainer("clamav", "clamav/clamav:latest")
     .WithLifetime(ContainerLifetime.Persistent)
-    .WithBindMount(clamScanDir, "/scan")
+    .WithVolume("clamav-scan-volume", "/scan")
     .WithVolume("clamav-volume", "/var/lib/clamav")
     .WithEndpoint("clam", e =>
     {
@@ -45,7 +52,19 @@ var postgres = builder.AddPostgres("postgres", postgresUser, postgresPass, port:
 var postgresDb = postgres.AddDatabase("postgresdb");
 
 var dbMigrator = builder.AddProject<Projects.FileUploader_DbMigrator>("dbmigrator")
-    .WithReference(postgresDb);
+    .WithReference(postgresDb)
+    .WaitFor(postgresDb);
+
+var virusScanner = builder.AddDockerfile("virus-scanner", "../../..", "src/server/FileUploader.VirusScanner/Dockerfile")
+    .WithLifetime(ContainerLifetime.Persistent)
+    .WithReference(postgresDb)
+    .WithReference(minio)
+    .WithEnvironment("Storage__ServiceUrl", minio.GetEndpoint("http"))
+    .WithEnvironment("Storage__AccessKey", minioUser)
+    .WithEnvironment("Storage__SecretKey", minioPass)
+    .WithEnvironment("ClamAv__Uri", "tcp://clamav:3310")
+    .WithEnvironment("ClamAv__ScanDirectory", "/scan")
+    .WithVolume("clamav-scan-volume", "/scan");
 
 var api = builder.AddProject<Projects.FileUploader_ApiService>("api")
     .WithHttpHealthCheck("/health")
@@ -55,13 +74,13 @@ var api = builder.AddProject<Projects.FileUploader_ApiService>("api")
     .WaitFor(minio)
     .WaitFor(clamav)
     .WaitFor(keycloak)
-    .WaitFor(postgresDb)
-    .WaitFor(dbMigrator)
+    .WaitFor(virusScanner)
+    .WaitForCompletion(dbMigrator)
     .WithEnvironment("Storage__ServiceUrl", minio.GetEndpoint("http"))
     .WithEnvironment("Storage__AccessKey", minioUser)
     .WithEnvironment("Storage__SecretKey", minioPass)
     .WithEnvironment("ClamAv__Uri", "tcp://localhost:3310")
-    .WithEnvironment("ClamAv__ScanDirectory", Path.GetFullPath(clamScanDir))
+    //.WithEnvironment("ClamAv__ScanDirectory", Path.GetFullPath(clamScanDir))
     .WithEnvironment("Keycloak__BaseUrl", keycloak.GetEndpoint("http"))
     .WithEnvironment("Keycloak__Realm", "aspire")
     .WithEnvironment("Keycloak__Audience", "spa-client");

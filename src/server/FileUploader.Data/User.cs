@@ -41,7 +41,7 @@ public class Job
 
     public JsonDocument Payload { get; set; } = default!;
 
-    public string Status { get; set; } = "pending";
+    public string Status { get; set; } = JobStatus.Pending;
 
     public int Attempts { get; set; } = 0;
     public int MaxAttempts { get; set; } = 5;
@@ -53,6 +53,14 @@ public class Job
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
+public static class JobStatus
+{
+    public const string Pending = "pending";
+    public const string Processing = "processing";
+    public const string Completed = "completed";
+    public const string Failed = "failed";
+}
+public record VirusScanPayload(int UploadId);
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {

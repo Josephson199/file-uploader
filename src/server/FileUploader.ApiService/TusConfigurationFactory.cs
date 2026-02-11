@@ -140,7 +140,7 @@ public class TusConfigurationFactory
                         CreatedAt = DateTime.UtcNow,
                         MaxAttempts = 5,
                         Status = "pending",
-                        Type = "scan-upload",
+                        Type = "virus-scan",
                         Payload = System.Text.Json.JsonDocument.Parse($@"{{
                                 ""uploadId"": {upload.UploadId}
                             }}"),

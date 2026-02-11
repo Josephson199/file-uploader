@@ -1,0 +1,56 @@
+# Ignore build output
+**/bin/
+**/obj/
+**/out/
+
+# Ignore user-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Ignore IDE folders
+.vs/
+.vscode/
+.idea/
+
+# Ignore NuGet caches
+**/packages/
+*.nupkg
+.nuget/
+
+# Ignore test results
+TestResults/
+**/TestResults/
+*.coverage
+*.coveragexml
+
+# Ignore logs and temp files
+*.log
+*.tmp
+*.temp
+*.ds_store
+
+# Ignore OS-specific files
+Thumbs.db
+ehthumbs.db
+.DS_Store
+
+# Ignore Aspire local state
+.aspire/
+
+# Ignore docker build artifacts
+docker-compose.override.yml
+docker-compose.*.yml
+
+# Ignore git metadata
+.git/
+.gitignore
+
+# Ignore node artifacts (if any frontend exists)
+node_modules/
+dist/
+build/
+
+# Ignore publish output (should be created inside container)
+**/publish/

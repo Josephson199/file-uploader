@@ -32,6 +32,7 @@
     <ProjectReference Include="..\FileUploader.Data\FileUploader.Data.csproj" IsAspireProjectResource="false" />
     <ProjectReference Include="..\FileUploader.DbMigrator\FileUploader.DbMigrator.csproj" />
     <ProjectReference Include="..\FileUploader.ServiceDefaults\FileUploader.ServiceDefaults.csproj" IsAspireProjectResource="false" />
+    <ProjectReference Include="..\FileUploader.VirusScanner\FileUploader.VirusScanner.csproj" />
   </ItemGroup>
 
 </Project>

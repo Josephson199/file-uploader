@@ -60,8 +60,6 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 });
 
 builder.Services.AddSingleton<FileValidator>();
-builder.Services.AddHostedService<VirusScannerWorker>();
-builder.Services.AddHostedService<ScanUploadWorker>();
 builder.Services.AddSingleton<TusConfigurationFactory>();
 builder.Services.AddSingleton(sp =>
 {

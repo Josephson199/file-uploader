@@ -57,7 +57,7 @@ namespace FileUploader.Data.Migrations
                     OrignalFileName = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     UploadedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     VirusDetected = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    ScanReportRaw = table.Column<string>(type: "jsonb", nullable: true),
+                    ScanReportRaw = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: true),
                     ObjectFileKey = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: false),
                     FileId = table.Column<string>(type: "text", nullable: false)
                 },

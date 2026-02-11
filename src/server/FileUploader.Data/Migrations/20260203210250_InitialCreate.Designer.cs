@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FileUploader.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260201212152_InitialCreate")]
+    [Migration("20260203210250_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -94,7 +94,8 @@ namespace FileUploader.Data.Migrations
                         .HasColumnType("character varying(255)");
 
                     b.Property<string>("ScanReportRaw")
-                        .HasColumnType("jsonb");
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<DateTimeOffset>("UploadedAt")
                         .HasColumnType("timestamp with time zone");
