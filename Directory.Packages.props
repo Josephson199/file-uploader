@@ -3,7 +3,9 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="Aspire.Hosting.Testing" Version="13.1.0" />
     <PackageVersion Include="AWSSDK.S3" Version="4.0.18.1" />
+    <PackageVersion Include="MartinCostello.Logging.XUnit" Version="0.7.0" />
     <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.18.0.131500" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.2.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.2.0" />
@@ -25,5 +27,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
     <PackageVersion Include="nClam" Version="9.0.0" />
     <PackageVersion Include="tusdotnet.Stores.S3" Version="2.2.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>
 </Project>
