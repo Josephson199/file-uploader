@@ -17,13 +17,13 @@ public class EnsureUserExistsMiddleware
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
-            var userId = context.User.FindFirst("sub")?.Value;
+            var subject = context.User.FindFirst("sub")?.Value;
 
-            if (!string.IsNullOrEmpty(userId))
+            if (!string.IsNullOrEmpty(subject))
             {
                 using var scope = services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var exists = await db.Users.AnyAsync(u => u.Sub == userId);
+                var exists = await db.Users.AnyAsync(u => u.Sub == subject);
 
                 if (!exists)
                 {
@@ -31,7 +31,7 @@ public class EnsureUserExistsMiddleware
                     {
                         db.Users.Add(new User
                         {
-                            Sub = userId,
+                            Sub = subject,
                         });
                         await db.SaveChangesAsync(); 
                     }

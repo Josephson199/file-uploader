@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
-using nClam;
 using System.Security.Claims;
 using tusdotnet;
 
@@ -60,16 +59,9 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 });
 
 builder.Services.AddSingleton<FileValidator>();
+builder.Services.Configure<UploadOptions>(
+    builder.Configuration.GetSection("Upload"));
 builder.Services.AddSingleton<TusConfigurationFactory>();
-builder.Services.AddSingleton(sp =>
-{
-    var clamUri = new Uri(builder.Configuration["ClamAv:Uri"]!);
-
-    return new ClamClient(
-        clamUri.Host!,
-        clamUri.Port);
-});
-
 
 var app = builder.Build();
 

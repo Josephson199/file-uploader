@@ -3,6 +3,19 @@ using System.Text.Json;
 
 namespace FileUploader.Data;
 
+public class Project
+{
+    public int ProjectId { get; set; }
+
+    public int OwnerUserId { get; set; }
+
+    public User OwnerUser { get; set; } = null!;
+
+    public required string Name { get; set; }
+
+    public string? Description { get; set; }
+}
+
 public class User
 {
     public int UserId { get; set; }
@@ -10,6 +23,8 @@ public class User
     public required string Sub { get; set; }
 
     public List<Upload> Uploads { get; set; } = [];
+
+    public List<Project> Projects { get; set; } = [];
 }
 
 public class Upload
@@ -46,11 +61,11 @@ public class Job
     public int Attempts { get; set; } = 0;
     public int MaxAttempts { get; set; } = 5;
 
-    public DateTime? LockedAt { get; set; }
+    public DateTimeOffset? LockedAt { get; set; }
     public string? LockedBy { get; set; }
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public static class JobStatus
@@ -79,8 +94,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(e => e.Sub)
                 .IsUnique();
             entity.HasMany(e => e.Uploads)
-                  .WithOne(e => e.User)
-                  .HasForeignKey(e => e.UserId);
+                .WithOne(e => e.User)
+                .HasForeignKey(e => e.UserId);
+            entity.HasMany(e => e.Projects)
+                .WithOne(p => p.OwnerUser)
+                .HasForeignKey(p => p.OwnerUserId);
         });
 
         modelBuilder.Entity<Upload>(entity =>
@@ -108,6 +126,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.Payload)
                 .HasColumnType("jsonb")
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<Project>(entity =>
+        {
+            entity.HasKey(e => e.ProjectId);
+            entity.Property(e => e.Name)
+                .HasMaxLength(128)
+                .IsRequired();
+            entity.Property(e => e.Description)
+                .HasMaxLength(2000);
         });
     }
 }

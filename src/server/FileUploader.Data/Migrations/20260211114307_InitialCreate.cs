@@ -24,10 +24,10 @@ namespace FileUploader.Data.Migrations
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     Attempts = table.Column<int>(type: "integer", nullable: false),
                     MaxAttempts = table.Column<int>(type: "integer", nullable: false),
-                    LockedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LockedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     LockedBy = table.Column<string>(type: "text", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -45,6 +45,27 @@ namespace FileUploader.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Users", x => x.UserId);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Project",
+                columns: table => new
+                {
+                    ProjectId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    OwnerUserId = table.Column<int>(type: "integer", nullable: false),
+                    Name = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    Description = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Project", x => x.ProjectId);
+                    table.ForeignKey(
+                        name: "FK_Project_Users_OwnerUserId",
+                        column: x => x.OwnerUserId,
+                        principalTable: "Users",
+                        principalColumn: "UserId",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -73,6 +94,11 @@ namespace FileUploader.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_Project_OwnerUserId",
+                table: "Project",
+                column: "OwnerUserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Uploads_UserId",
                 table: "Uploads",
                 column: "UserId");
@@ -89,6 +115,9 @@ namespace FileUploader.Data.Migrations
         {
             migrationBuilder.DropTable(
                 name: "Jobs");
+
+            migrationBuilder.DropTable(
+                name: "Project");
 
             migrationBuilder.DropTable(
                 name: "Uploads");

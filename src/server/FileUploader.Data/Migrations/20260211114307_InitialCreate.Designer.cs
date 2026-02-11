@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FileUploader.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260203210250_InitialCreate")]
+    [Migration("20260211114307_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -37,10 +37,10 @@ namespace FileUploader.Data.Migrations
                     b.Property<int>("Attempts")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("LockedAt")
+                    b.Property<DateTimeOffset?>("LockedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("LockedBy")
@@ -63,12 +63,39 @@ namespace FileUploader.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
                     b.ToTable("Jobs");
+                });
+
+            modelBuilder.Entity("FileUploader.Data.Project", b =>
+                {
+                    b.Property<int>("ProjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ProjectId"));
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("OwnerUserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ProjectId");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.ToTable("Project");
                 });
 
             modelBuilder.Entity("FileUploader.Data.Upload", b =>
@@ -134,6 +161,17 @@ namespace FileUploader.Data.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("FileUploader.Data.Project", b =>
+                {
+                    b.HasOne("FileUploader.Data.User", "OwnerUser")
+                        .WithMany("Projects")
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("OwnerUser");
+                });
+
             modelBuilder.Entity("FileUploader.Data.Upload", b =>
                 {
                     b.HasOne("FileUploader.Data.User", "User")
@@ -147,6 +185,8 @@ namespace FileUploader.Data.Migrations
 
             modelBuilder.Entity("FileUploader.Data.User", b =>
                 {
+                    b.Navigation("Projects");
+
                     b.Navigation("Uploads");
                 });
 #pragma warning restore 612, 618

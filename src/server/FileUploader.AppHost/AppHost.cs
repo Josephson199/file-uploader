@@ -10,6 +10,8 @@ using System.Net.Sockets;
 // Add endpoint exposing file validation rules to shared with client app
 // Add string error message on jobs.
 // Add some sort of domain, maybe healthcare.
+// Clean up tusconf factory
+// Read keycloak conf from file endpoint instead hardcoded in client
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -79,17 +81,23 @@ var api = builder.AddProject<Projects.FileUploader_ApiService>("api")
     .WithEnvironment("Storage__ServiceUrl", minio.GetEndpoint("http"))
     .WithEnvironment("Storage__AccessKey", minioUser)
     .WithEnvironment("Storage__SecretKey", minioPass)
-    .WithEnvironment("ClamAv__Uri", "tcp://localhost:3310")
-    //.WithEnvironment("ClamAv__ScanDirectory", Path.GetFullPath(clamScanDir))
     .WithEnvironment("Keycloak__BaseUrl", keycloak.GetEndpoint("http"))
     .WithEnvironment("Keycloak__Realm", "aspire")
-    .WithEnvironment("Keycloak__Audience", "spa-client");
+    .WithEnvironment("Keycloak__Audience", "spa-client")
+    .WithEnvironment("Upload__MaxFileSize", "2147483648")
+    .WithEnvironment("Upload__AllowedExtensions", ".zip")
+    .WithEnvironment("Upload__AllowedMimeTypes", "application/x-zip-compressed")
+    .WithEnvironment("Upload__MaxFileNameLength", "256");
 
 builder.AddViteApp(name: "file-upload-app", workingDirectory: "../../client/file-upload-app")
     .WithReference(api)
     .WaitFor(api)
     .WithNpmPackageInstallation()
-    .WithEnvironment("VITE_KEYCLOAK_BASE_URL", keycloak.GetEndpoint("http"))
-    .WithEnvironment("VITE_KEYCLOAK_REALM", "aspire");
+    .WithEnvironment("KEYCLOAK_BASE_URL", keycloak.GetEndpoint("http"))
+    .WithEnvironment("KEYCLOAK_REALM", "aspire")
+    .WithEnvironment("UPLOAD_MAX_FILE_SIZE", "2147483648")
+    .WithEnvironment("UPLOAD_ALLOWED_EXTENSIONS", ".zip")
+    .WithEnvironment("UPLOAD_ALLOWED_MIME_TYPES", "application/x-zip-compressed")
+    .WithEnvironment("UPLOAD_MAX_FILE_NAME_LENGTH", "256");
 
 await builder.Build().RunAsync();

@@ -93,7 +93,7 @@ public class VirusScanner : BackgroundService
             _logger.LogError(ex, "Error processing job {JobId}", job.Id);
 
             job.Status = JobStatus.Failed;
-            job.UpdatedAt = DateTime.UtcNow;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
 
             try
             {
@@ -227,7 +227,7 @@ public class VirusScanner : BackgroundService
 
             upload.ObjectFileKey = destinationKey;
             job.Status = JobStatus.Completed;
-            job.UpdatedAt = DateTime.UtcNow;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
 
             _logger.LogDebug("Marking job {JobId} completed and saving DB", job.Id);
             await db.SaveChangesAsync(ct);
@@ -434,10 +434,10 @@ public class VirusScanner : BackgroundService
         }
 
         job.Status = JobStatus.Processing;
-        job.LockedAt = DateTime.UtcNow;
+        job.LockedAt = DateTimeOffset.UtcNow;
         job.LockedBy = workerId;
         job.Attempts += 1;
-        job.UpdatedAt = DateTime.UtcNow;
+        job.UpdatedAt = DateTimeOffset.UtcNow;
 
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);

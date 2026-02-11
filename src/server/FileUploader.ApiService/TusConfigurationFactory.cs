@@ -3,7 +3,8 @@ using FileUploader.ApiService;
 using FileUploader.Data;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using nClam;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using System.Text;
 using tusdotnet.Interfaces;
@@ -21,20 +22,20 @@ public class TusConfigurationFactory
 {
     private readonly ILogger<TusConfigurationFactory> _logger;
     private readonly FileValidator _fileValidator;
-    private readonly ClamClient _clamClient;
+    private readonly IOptions<UploadOptions> _uploadOptions;
 
-    public TusConfigurationFactory(ILogger<TusConfigurationFactory> logger, FileValidator fileValidator, ClamClient clamClient)
+    public TusConfigurationFactory(ILogger<TusConfigurationFactory> logger, FileValidator fileValidator, IOptions<UploadOptions> uploadOptions)
     {
         _logger = logger;
         _fileValidator = fileValidator;
-        _clamClient = clamClient;
+        _uploadOptions = uploadOptions;
     }
 
     public DefaultTusConfiguration Create(HttpContext context)
     {
         return new DefaultTusConfiguration
         {
-            MaxAllowedUploadSizeInBytes = 100 * 1024 * 1024 * 10 * 2, // 2gb
+            MaxAllowedUploadSizeInBytes = int.MaxValue,
             Expiration = new SlidingExpiration(TimeSpan.FromDays(7)),
             UrlPath = "/files",
             Store = new TusS3Store(
@@ -137,7 +138,7 @@ public class TusConfigurationFactory
 
                     var job = new Job
                     {
-                        CreatedAt = DateTime.UtcNow,
+                        CreatedAt = DateTimeOffset.UtcNow,
                         MaxAttempts = 5,
                         Status = "pending",
                         Type = "virus-scan",
@@ -145,7 +146,7 @@ public class TusConfigurationFactory
                                 ""uploadId"": {upload.UploadId}
                             }}"),
                         Attempts = 0,
-                        UpdatedAt = DateTime.UtcNow
+                        UpdatedAt = DateTimeOffset.UtcNow
                     };
 
                     db.Jobs.Add(job);

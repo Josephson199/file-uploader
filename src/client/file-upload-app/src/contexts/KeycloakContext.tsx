@@ -5,6 +5,7 @@ import React, {
   useRef,
 } from 'react'
 import Keycloak, { type KeycloakConfig } from 'keycloak-js'
+import { useConfig } from '../hooks/useConfig'
 
 interface KeycloakContextProps {
   keycloak: Keycloak | null
@@ -23,6 +24,7 @@ interface KeycloakProviderProps {
 }
 
 const KeycloakProvider: React.FC<KeycloakProviderProps> = ({ children }) => {
+  const { config, isLoading } = useConfig()
   const isRun = useRef<boolean>(false)
   const refreshTimer = useRef<number | null>(null)
   const [keycloak, setKeycloak] = useState<Keycloak | null>(null)
@@ -30,14 +32,13 @@ const KeycloakProvider: React.FC<KeycloakProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null)
 
   useEffect(() => {
-    if (isRun.current) return
+    if (isRun.current || isLoading || !config) return
     isRun.current = true
 
     const initKeycloak = async () => {
-      //TODO fetch /config
       const keycloackConfig: KeycloakConfig  = {
-        url: 'http://localhost:8080',
-        realm: 'aspire',
+        url: config.keycloak.baseUrl,
+        realm: config.keycloak.realm,
         clientId: 'spa-client',
       }
       const keycloakInstance: Keycloak = new Keycloak(keycloackConfig)
@@ -88,7 +89,7 @@ const KeycloakProvider: React.FC<KeycloakProviderProps> = ({ children }) => {
         clearInterval(refreshTimer.current)
       }
     }
-  }, []) // run once
+  }, [config, isLoading])
 
   const login = () => keycloak?.login()
   const logout = () => keycloak?.logout()
