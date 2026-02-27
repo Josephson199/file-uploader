@@ -71,15 +71,18 @@ public class Job
 
     public JsonDocument Payload { get; set; } = default!;
 
-    public string Status { get; set; } = "pending";
+    public string Status { get; set; } = JobStatus.Pending;
 
     public int Attempts { get; set; } = 0;
+
     public int MaxAttempts { get; set; } = 5;
 
     public DateTimeOffset? LockedAt { get; set; }
+
     public string? LockedBy { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
@@ -120,7 +123,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .HasMaxLength(255)
                 .IsRequired();
             entity.Property(e => e.ScanReportRaw)
-                .HasColumnType("jsonb");
+                .HasMaxLength(1024);
             entity.Property(e => e.ObjectFileKey)
                 .HasMaxLength(1024)
                 .IsRequired();

@@ -17,49 +17,40 @@ export const useJobEvents = (onEvent?: (event: JobEvent) => void) => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let eventSource: EventSource | null = null;
+ useEffect(() => {
+  let eventSource: EventSource | null = null;
 
-    const connect = () => {
+  const connect = () => {
+    setError(null);
+    eventSource = new EventSource("/api/events");
+
+    eventSource.onopen = () => setIsConnected(true);
+
+    eventSource.addEventListener("jobs", (event) => {
       try {
-        setError(null);
-        eventSource = new EventSource('/api/events');
-
-        eventSource.onopen = () => {
-          setIsConnected(true);
-        };
-
-        eventSource.onmessage = (event) => {
-          try {
-            const jobEvent: JobEvent = JSON.parse(event.data);
-            onEvent?.(jobEvent);
-          } catch (err) {
-            console.error('Failed to parse event data:', err);
-          }
-        };
-
-        eventSource.onerror = () => {
-          console.error('EventSource connection error');
-          setIsConnected(false);
-          setError('Connection lost. Reconnecting...');
-          eventSource?.close();
-          setTimeout(connect, 3000);
-        };
+        const jobEvent: JobEvent = JSON.parse(event.data);
+        onEvent?.(jobEvent);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to connect');
-        setIsConnected(false);
+        console.error("Failed to parse event data:", err);
       }
-    };
+    });
 
-    connect();
-
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-        setIsConnected(false);
-      }
+    eventSource.onerror = () => {
+      setIsConnected(false);
+      setError("Connection lost. Reconnecting...");
+      eventSource?.close();
+      setTimeout(connect, 3000);
     };
-  }, [onEvent]);
+  };
+
+  connect();
+
+  return () => {
+    eventSource?.close();
+    setIsConnected(false);
+  };
+}, [onEvent]);
+
 
   return { isConnected, error };
 };

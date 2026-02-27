@@ -6,11 +6,9 @@ import '@uppy/dashboard/dist/style.css'
 import '@uppy/status-bar/dist/style.css'
 import { useState, useEffect } from 'react'
 import StatusBar from '@uppy/status-bar'
-import useKeycloak from '../hooks/useKeycloak'
 import { useConfig } from '../hooks/useConfig'
 
 const Uploader = () => {
-  const { token } = useKeycloak();
   const { config, isLoading } = useConfig();
   const [uppy, setUppy] = useState<Uppy | null>(null);
 
@@ -30,7 +28,6 @@ const Uploader = () => {
         chunkSize: 5242880 * 2, // 10mb
         retryDelays: [0, 1000, 3000, 5000],
         headers: {
-          'Authorization': `Bearer ${token}`,
           'X-Custom-Header': '1234',
         }
     })
@@ -68,7 +65,7 @@ const Uploader = () => {
     return () => {
       uppyInstance.destroy();
     };
-  }, [config?.upload, token, isLoading]);
+  }, [config?.upload, isLoading]);
 
   if (isLoading) {
     return <div>Loading uploader configuration...</div>;

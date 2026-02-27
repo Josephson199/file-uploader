@@ -17,29 +17,37 @@ public class EnsureUserExistsMiddleware
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
-            var subject = context.User.FindFirst("sub")?.Value;
+            var subject = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            if (!string.IsNullOrEmpty(subject))
+            try
             {
-                using var scope = services.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var exists = await db.Users.AnyAsync(u => u.Sub == subject);
-
-                if (!exists)
+                if (!string.IsNullOrEmpty(subject))
                 {
-                    try 
+                    using var scope = services.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    var exists = await db.Users.AnyAsync(u => u.Sub == subject, context.RequestAborted);
+
+                    if (!exists)
                     {
-                        db.Users.Add(new User
+                        try
                         {
-                            Sub = subject,
-                        });
-                        await db.SaveChangesAsync(); 
-                    }
-                    catch (DbUpdateException) 
-                    {
-                        // Safe to ignore, another request might have created the user in the meantime
+                            db.Users.Add(new User
+                            {
+                                Sub = subject,
+                            });
+
+                            await db.SaveChangesAsync(context.RequestAborted);
+                        }
+                        catch (DbUpdateException)
+                        {
+                            // Safe to ignore, another request might have created the user in the meantime
+                        }
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Ingore cancellations
             }
         }
 

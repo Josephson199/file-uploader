@@ -11,6 +11,7 @@ using System.Net.Sockets;
 // Add string error message on jobs.
 // Add some sort of domain, maybe healthcare.
 // List files in client
+// Fix event stream?
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -67,8 +68,18 @@ var virusScanner = builder.AddDockerfile("virus-scanner", "../../..", "src/serve
     .WithEnvironment("ClamAv__ScanDirectory", "/scan")
     .WithVolume("clamav-scan-volume", "/scan");
 
+var viteapp = builder.AddViteApp(name: "file-upload-app", workingDirectory: "../../client/file-upload-app")
+    .WithNpmPackageInstallation()
+    .WithEnvironment("KEYCLOAK_BASE_URL", keycloak.GetEndpoint("http"))
+    .WithEnvironment("KEYCLOAK_REALM", "aspire")
+    .WithEnvironment("UPLOAD_MAX_FILE_SIZE", "2147483648")
+    .WithEnvironment("UPLOAD_ALLOWED_EXTENSIONS", ".zip,.jpg,.jpeg,.png")
+    .WithEnvironment("UPLOAD_ALLOWED_MIME_TYPES", "application/x-zip-compressed,application/zip,image/jpeg,image/png")
+    .WithEnvironment("UPLOAD_MAX_FILE_NAME_LENGTH", "256");
+
 var api = builder.AddProject<Projects.FileUploader_ApiService>("api")
-    .WithHttpHealthCheck("/health")
+    .WithHttpHealthCheck("/api/health")
+    .WithReference(viteapp)
     .WithReference(minio)
     .WithReference(keycloak)
     .WithReference(postgresDb)
@@ -82,21 +93,11 @@ var api = builder.AddProject<Projects.FileUploader_ApiService>("api")
     .WithEnvironment("Storage__SecretKey", minioPass)
     .WithEnvironment("Keycloak__BaseUrl", keycloak.GetEndpoint("http"))
     .WithEnvironment("Keycloak__Realm", "aspire")
-    .WithEnvironment("Keycloak__Audience", "spa-client")
+    .WithEnvironment("Keycloak__ClientId", "spa-client")
+    .WithEnvironment("Keycloak__ClientSecret", "secret")
     .WithEnvironment("Upload__MaxFileSize", "2147483648")
-    .WithEnvironment("Upload__AllowedExtensions", ".zip")
-    .WithEnvironment("Upload__AllowedMimeTypes", "application/x-zip-compressed")
+    .WithEnvironment("Upload__AllowedExtensions", ".zip,.jpg,.jpeg,.png")
+    .WithEnvironment("Upload__AllowedMimeTypes", "application/x-zip-compressed,application/zip,image/jpeg,image/png")
     .WithEnvironment("Upload__MaxFileNameLength", "256");
-
-builder.AddViteApp(name: "file-upload-app", workingDirectory: "../../client/file-upload-app")
-    .WithReference(api)
-    .WaitFor(api)
-    .WithNpmPackageInstallation()
-    .WithEnvironment("KEYCLOAK_BASE_URL", keycloak.GetEndpoint("http"))
-    .WithEnvironment("KEYCLOAK_REALM", "aspire")
-    .WithEnvironment("UPLOAD_MAX_FILE_SIZE", "2147483648")
-    .WithEnvironment("UPLOAD_ALLOWED_EXTENSIONS", ".zip")
-    .WithEnvironment("UPLOAD_ALLOWED_MIME_TYPES", "application/x-zip-compressed")
-    .WithEnvironment("UPLOAD_MAX_FILE_NAME_LENGTH", "256");
 
 await builder.Build().RunAsync();

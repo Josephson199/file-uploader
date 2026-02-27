@@ -13,7 +13,6 @@ import {
   Typography,
   Chip,
 } from '@mui/material';
-import useKeycloak from '../hooks/useKeycloak';
 import { useJobEvents } from '../hooks/useJobEvents';
 
 interface UploadedFile {
@@ -38,7 +37,6 @@ interface JobEvent {
 }
 
 const FileList: React.FC = () => {
-  const { token } = useKeycloak();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,9 +44,10 @@ const FileList: React.FC = () => {
 
   const handleJobEvent = useCallback((jobEvent: JobEvent) => {
     // Update job status map
+    console.log('Received job event:', jobEvent);
     setJobStatuses((prev) => {
       const updated = new Map(prev);
-      updated.set(jobEvent.jobId, jobEvent);
+      updated.set(jobEvent.payload.uploadId, jobEvent);
       return updated;
     });
   }, []);
@@ -61,11 +60,7 @@ const FileList: React.FC = () => {
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch('/api/files-list', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        const response = await fetch('/api/files-list');
 
         if (!response.ok) {
           throw new Error(`Failed to fetch files: ${response.statusText}`);
@@ -79,11 +74,8 @@ const FileList: React.FC = () => {
         setIsLoading(false);
       }
     };
-
-    if (token) {
-      fetchFiles();
-    }
-  }, [token]);
+    fetchFiles();
+  }, [jobStatuses]);
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
@@ -132,7 +124,7 @@ const FileList: React.FC = () => {
           </TableHead>
           <TableBody>
             {files.map((file) => {
-              const jobStatus = jobStatuses.get(file.fileId);
+              const jobStatus = jobStatuses.get(file.uploadId);
               return (
                 <TableRow key={file.uploadId} hover>
                   <TableCell>{file.orignalFileName}</TableCell>

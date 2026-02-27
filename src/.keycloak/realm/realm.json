@@ -1,0 +1,51 @@
+{
+  "realm": "aspire",
+  "clients": [
+    {
+      "clientId": "oauth2-proxy",
+      "name": "oauth2-proxy",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:4180/oauth2/callback",
+        "http://oauth2-proxy:4180/oauth2/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:4180",
+        "http://oauth2-proxy:4180"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:4180/"
+      }
+    },
+
+    {
+      "clientId": "spa-client",
+      "name": "spa-client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+
+    /* other existing clients... */
+  ],
+
+  /* rest of realm JSON */
+}

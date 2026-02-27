@@ -28,7 +28,7 @@ namespace FileUploader.IntegrationTests
                 .WaitForResourceAsync("api", cancellationToken: ct)
                 .WaitAsync(s_defaultTimeout, ct);
 
-            using var response = await httpClient.GetAsync("/health", ct);
+            using var response = await httpClient.GetAsync("/api/health", ct);
 
             Assert.Equal(
                 expected: HttpStatusCode.OK,

@@ -41,7 +41,7 @@ public class TusConfigurationFactory
         {
             MaxAllowedUploadSizeInBytes = int.MaxValue,
             Expiration = new SlidingExpiration(TimeSpan.FromDays(7)),
-            UrlPath = "/files",
+            UrlPath = "/api/files",
             Store = new TusS3Store(
                 context.RequestServices.GetRequiredService<ILogger<TusS3Store>>(),
                 new TusS3StoreConfiguration
@@ -69,7 +69,7 @@ public class TusConfigurationFactory
                         return;
                     }
 
-                    var currentSub = user.FindFirstValue("sub");
+                    var currentSub = user.FindFirstValue(ClaimTypes.NameIdentifier);
                     if (string.IsNullOrWhiteSpace(currentSub))
                     {
                         ctx.FailRequest(System.Net.HttpStatusCode.Unauthorized, "sub claim missing");
@@ -144,7 +144,7 @@ public class TusConfigurationFactory
                     _logger.LogInformation("Tus OnCreateCompleteAsync: {FileId}", ctx.FileId);
 
                     var user = ctx.HttpContext.User;
-                    var sub = user.FindFirstValue("sub") ?? string.Empty;
+                    var sub = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
                     try
                     {
@@ -189,7 +189,7 @@ public class TusConfigurationFactory
                     using var scope = ctx.HttpContext.RequestServices.CreateScope();
                     using var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                    var sub = ctx.HttpContext.User.FindFirstValue("sub");
+                    var sub = ctx.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
                     var user = await db.Users.SingleAsync(u => u.Sub == sub, ctx.CancellationToken);
 
                     // Find candidate (created on OnCreateCompleteAsync)
@@ -249,6 +249,6 @@ public class TusConfigurationFactory
 
     private static string GetObjectFilePrefix(HttpContext context)
     {
-        return $"uploads/temp/{context.User.FindFirstValue("sub")}";
+        return $"uploads/temp/{context.User.FindFirstValue(ClaimTypes.NameIdentifier)}";
     }
 }

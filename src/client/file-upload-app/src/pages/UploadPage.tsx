@@ -1,16 +1,11 @@
 import React from 'react';
 import { Grid, Box, Typography } from '@mui/material';
 import AuthenticationMessage from '../components/AuthenticationMessage';
-import useKeycloak from '../hooks/useKeycloak';
+import { useContext, useEffect } from 'react';
 import Uploader from '../components/Uploader';
 import FileList from '../components/FileList';
 
 const Upload: React.FC = () => {
-  const { keycloak, authenticated } = useKeycloak();
-
-  if (!authenticated || !keycloak) {
-    return <AuthenticationMessage />;
-  }
 
   return (
     <Box>
@@ -18,10 +13,7 @@ const Upload: React.FC = () => {
         Uploads
       </Typography>
       <Typography variant="body1" gutterBottom>
-        Hello, {keycloak?.idTokenParsed?.preferred_username}!
-      </Typography>
-      <Typography variant="body2" gutterBottom>
-        Email: {keycloak?.idTokenParsed?.email}
+        Hello, authenticated user!
       </Typography>
 
       <Grid container spacing={3} sx={{ marginTop: 2 }}>

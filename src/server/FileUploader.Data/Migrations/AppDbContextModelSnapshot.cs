@@ -92,7 +92,8 @@ namespace FileUploader.Data.Migrations
                         .HasColumnType("character varying(255)");
 
                     b.Property<string>("ScanReportRaw")
-                        .HasColumnType("jsonb");
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
 
                     b.Property<DateTimeOffset>("UploadedAt")
                         .HasColumnType("timestamp with time zone");

@@ -16,7 +16,7 @@ namespace FileUploader.Data.Migrations
                     payload JSON;
                 BEGIN
                     payload = json_build_object(
-                        'id', NEW.""JobId"",
+                        'jobId', NEW.""JobId"",
                         'type', NEW.""Type"",
                         'status', NEW.""Status"",
                         'attempts', NEW.""Attempts"",

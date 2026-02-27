@@ -68,9 +68,9 @@ public class VirusScanner : BackgroundService
                 _logger.LogInformation("Dequeued job {JobId} (attempts={Attempts})", job.JobId, job.Attempts);
                 await ProcessJobSafe(db, job, stoppingToken);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException e)
             {
-                _logger.LogInformation("Operation cancelled, exiting loop (worker {WorkerId})", _workerId);
+                _logger.LogInformation(e, "Operation cancelled, exiting loop (worker {WorkerId})", _workerId);
                 break;
             }
             catch (Exception ex)
@@ -112,11 +112,14 @@ public class VirusScanner : BackgroundService
         _logger.LogInformation("Processing job {JobId}", job.JobId);
 
         _logger.LogDebug("Deserializing payload for job {JobId}", job.JobId);
+
         var payload = JsonSerializer.Deserialize<VirusScanPayload>(job.Payload!, s_jsonSerializerOptions)
             ?? throw new InvalidOperationException("Invalid job payload");
+
         _logger.LogDebug("Payload deserialized for job {JobId}: UploadId={UploadId}", job.JobId, payload.UploadId);
 
         _logger.LogDebug("Loading upload record UploadId={UploadId}", payload.UploadId);
+
         var upload = await db.Uploads
             .Include(u => u.User)
             .SingleOrDefaultAsync(u => u.UploadId == payload.UploadId, ct);

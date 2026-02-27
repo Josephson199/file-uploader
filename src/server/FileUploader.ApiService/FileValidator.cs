@@ -50,7 +50,7 @@ public class FileValidator
 
         var ext = Path.GetExtension(fileName);
 
-        if (!_options.Value.AllowedExtensionsArray.Contains(ext))
+        if (!_options.Value.AllowedExtensionsArray.Contains(ext, StringComparer.InvariantCultureIgnoreCase))
         {
             ctx.FailRequest(
                 System.Net.HttpStatusCode.BadRequest,
