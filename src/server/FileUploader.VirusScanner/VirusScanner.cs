@@ -1,85 +1,106 @@
 ﻿using Amazon.S3;
 using Amazon.S3.Model;
+using FellowOakDicom;
 using FileUploader.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.VisualBasic;
 using nClam;
 using System;
+using System.Collections.Immutable;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using FileUploader.VirusScanner.Extensions;
 
 namespace FileUploader.VirusScanner;
 
-public class VirusScanner : BackgroundService
+internal class VirusScanner : BackgroundService
 {
     private readonly ILogger<VirusScanner> _logger;
     private readonly IAmazonS3 _s3Client;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ClamClient _clamClient;
     private readonly string _clamScanDirectory;
     private readonly Guid _workerId = Guid.NewGuid();
+    private readonly ZipExtractor _zipExtractor;
+    private readonly DicomFileValidator _dicomFileValidator;
+
     private static readonly JsonSerializerOptions s_jsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
     public VirusScanner(
         ILogger<VirusScanner> logger,
         IAmazonS3 s3Client,
-        IServiceProvider serviceProvider,
+        IServiceScopeFactory serviceScopeFactory,
         IConfiguration configuration,
-        ClamClient clamClient)
+        ClamClient clamClient,
+        ZipExtractor zipExtractor,
+        DicomFileValidator dicomFileValidator)
     {
         _logger = logger;
         _s3Client = s3Client;
-        _serviceProvider = serviceProvider;
+        _serviceScopeFactory = serviceScopeFactory;
         _clamClient = clamClient;
+        _zipExtractor = zipExtractor;
 
         _clamScanDirectory = configuration["ClamAv:ScanDirectory"]
             ?? throw new InvalidOperationException("ClamAv:ScanDirectory is missing");
 
         Directory.CreateDirectory(_clamScanDirectory);
 
-        _logger.LogInformation("VirusScanner constructed. WorkerId={WorkerId}, ScanDirectory={ScanDir}", _workerId, _clamScanDirectory);
+        _logger.LogInformation("VirusScanner constructed. {WorkerId} {ScanDir}", _workerId, _clamScanDirectory);
+        _dicomFileValidator = dicomFileValidator;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("VirusScanner started with {WorkerId}", _workerId);
+        using var workerLogScope = _logger.BeginScope(new Dictionary<string, object> { ["WorkerId"] = _workerId });
+
+        _logger.LogInformation("VirusScanner started");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await using var scope = _serviceProvider.CreateAsyncScope();
+                await using var scope = _serviceScopeFactory.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                _logger.LogDebug("Attempting to dequeue job (worker {WorkerId})", _workerId);
+                _logger.LogDebug("Attempting to dequeue job");
                 var job = await TryDequeueJobAsync(db, _workerId.ToString(), stoppingToken);
 
-                if (job == null)
+                if (job is null)
                 {
-                    _logger.LogTrace("No job found. Sleeping 5s (worker {WorkerId})", _workerId);
+                    _logger.LogTrace("No job found. Sleeping 5s");
                     await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                     continue;
                 }
 
-                _logger.LogInformation("Dequeued job {JobId} (attempts={Attempts})", job.JobId, job.Attempts);
+                using var jobLogScope = _logger.BeginScope(new Dictionary<string, object>
+                {
+                    ["JobId"] = job.JobId,
+                    ["JobType"] = job.Type
+                });
+
+                _logger.LogInformation("Dequeued job");
+
                 await ProcessJobSafe(db, job, stoppingToken);
             }
             catch (OperationCanceledException e)
             {
-                _logger.LogInformation(e, "Operation cancelled, exiting loop (worker {WorkerId})", _workerId);
+                _logger.LogInformation(e, "Operation cancelled, exiting loop");
                 break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unhandled error in worker loop (worker {WorkerId})", _workerId);
+                _logger.LogError(ex, "Unhandled error in worker loop");
             }
         }
 
-        _logger.LogInformation("VirusScanner stopping with {WorkerId}", _workerId);
+        _logger.LogInformation("VirusScanner stopping");
     }
 
     private async Task ProcessJobSafe(AppDbContext db, Job job, CancellationToken ct)
@@ -90,7 +111,7 @@ public class VirusScanner : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing job {JobId}", job.JobId);
+            _logger.LogError(ex, "Error processing job");
 
             job.Status = JobStatus.Failed;
             job.UpdatedAt = DateTimeOffset.UtcNow;
@@ -98,38 +119,45 @@ public class VirusScanner : BackgroundService
             try
             {
                 await db.SaveChangesAsync(ct);
-                _logger.LogInformation("Marked job {JobId} as failed in DB", job.JobId);
+                _logger.LogInformation("Marked job as failed in DB");
             }
             catch (Exception saveEx)
             {
-                _logger.LogError(saveEx, "Failed to save failed status for job {JobId}", job.JobId);
+                _logger.LogError(saveEx, "Failed to save failed status for job");
             }
         }
     }
 
     private async Task ProcessJob(AppDbContext db, Job job, CancellationToken ct)
     {
-        _logger.LogInformation("Processing job {JobId}", job.JobId);
+        _logger.LogInformation("Processing job");
 
-        _logger.LogDebug("Deserializing payload for job {JobId}", job.JobId);
+        _logger.LogDebug("Deserializing payload for job {Payload}", job.Payload.RootElement.GetRawText());
 
-        var payload = JsonSerializer.Deserialize<VirusScanPayload>(job.Payload!, s_jsonSerializerOptions)
-            ?? throw new InvalidOperationException("Invalid job payload");
+        var payload = JsonSerializer.Deserialize<VirusScanPayload>(job.Payload!, s_jsonSerializerOptions);
 
-        _logger.LogDebug("Payload deserialized for job {JobId}: UploadId={UploadId}", job.JobId, payload.UploadId);
+        ArgumentNullException.ThrowIfNull(payload);
 
-        _logger.LogDebug("Loading upload record UploadId={UploadId}", payload.UploadId);
+        _logger.LogDebug("Payload deserialized for {UploadId}", payload.UploadId);
+
+        _logger.LogDebug("Loading upload record {UploadId}", payload.UploadId);
 
         var upload = await db.Uploads
             .Include(u => u.User)
+            .Include(u => u.UploadValidationErrors)
+            .Include(u => u.UploadVirusScanResult)
             .SingleOrDefaultAsync(u => u.UploadId == payload.UploadId, ct);
 
-        if (upload == null)
+        if (upload is null)
         {
-            _logger.LogWarning("Upload {UploadId} not found for job {JobId}", payload.UploadId, job.JobId);
+            _logger.LogWarning("Upload {UploadId} not found for job", payload.UploadId);
             throw new InvalidOperationException($"Upload {payload.UploadId} not found");
         }
-        _logger.LogInformation("Found upload {UploadId} (FileId={FileId}, OriginalName={OriginalName})", upload.UploadId, upload.FileId, upload.OrignalFileName);
+
+        _logger.LogInformation("Found upload {UploadId} {FileId}, {OriginalName}",
+            upload.UploadId,
+            upload.FileId,
+            upload.OrignalFileName);
 
         var bucketName = "bucket";
 
@@ -143,9 +171,13 @@ public class VirusScanner : BackgroundService
 
         try
         {
-            // 1. Download file from S3
-            _logger.LogInformation("Downloading S3 object {Bucket}/{Key} to {LocalPath}", bucketName, upload.ObjectFileKey, localPath);
-            await DownloadFile(_s3Client, bucketName, upload.ObjectFileKey, localPath, ct);
+            _logger.LogInformation("Downloading S3 object {Bucket}/{Key} to {LocalPath}",
+                bucketName,
+                upload.TempObjectKey,
+                localPath);
+
+            await DownloadFile(_s3Client, bucketName, upload.TempObjectKey, localPath, ct);
+
             _logger.LogInformation("Downloaded S3 object to {LocalPath}", localPath);
 
             FileInfo li = new FileInfo(localPath);
@@ -154,210 +186,164 @@ public class VirusScanner : BackgroundService
             bool isZip = upload.OrignalFileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
             _logger.LogDebug("Is zip: {IsZip} for file {FileName}", isZip, upload.OrignalFileName);
 
-            if (isZip)
+            if (isZip && !upload.UploadValidationErrors.Any())
             {
-                // ZIP-specific scanning flow
+                // ZIP/DICOM-specific scanning flow
                 _logger.LogInformation("ZIP detected. Creating extract directory {ExtractDir}", extractDir);
                 Directory.CreateDirectory(extractDir);
 
                 _logger.LogDebug("Extracting ZIP {LocalPath}", localPath);
-                var extractedFiles = await ExtractAndValidateZipAsync(localPath, extractDir, ct);
-                _logger.LogInformation("Extracted {Count} files from ZIP {LocalPath}", extractedFiles.Count, localPath);
 
-                _logger.LogDebug("Validating {Count} extracted files as DICOM", extractedFiles.Count);
-                ValidateDicomFiles(extractedFiles);
-                _logger.LogInformation("DICOM validation passed for {Count} files", extractedFiles.Count);
+                var extractResult = await _zipExtractor.ExtractAndValidate(localPath, extractDir, ct);
 
-                // Scan ZIP container only
-                _logger.LogInformation("Sending file {FileId} to ClamAV for scanning (ZIP container)", upload.FileId);
-                var scanResult = await _clamClient.ScanFileOnServerMultithreadedAsync($"/scan/{upload.FileId}", ct);
-                _logger.LogInformation("ClamAV scan completed for {FileId}. Result={Result}", upload.FileId, scanResult.Result);
-                _logger.LogDebug("ClamAV raw result length: {Len}", scanResult.RawResult?.Length ?? 0);
+                _logger.LogInformation("Extracted {Count} files from ZIP {LocalPath}",
+                    extractResult.AcceptedFiles.Count + extractResult.RejectedFiles.Count,
+                    localPath);
 
-                upload.ScanReportRaw = scanResult.RawResult?.Replace("\0", "");
-                upload.VirusDetected = scanResult.Result == ClamScanResults.VirusDetected ? DateTimeOffset.UtcNow : null;
+                if (!extractResult.Success)
+                {
+                    _logger.LogWarning("Zip exctration validation failed for ZIP {LocalPath}", localPath);
+                    upload.UploadValidationErrors.Add(new UploadValidationError
+                    {
+                        ValidationType = "ZIP Extraction",
+                        ValidationErrorMessage = $"Rejected {extractResult.RejectedFiles.Count} files during ZIP extraction: " +
+                            string.Join("; ", extractResult.RejectedFiles.Select(f => $"{f.FileName} ({f.Reason})"))
+                    });
+                    job.Status = JobStatus.Completed;
+                    job.UpdatedAt = DateTimeOffset.UtcNow;
+                    await db.SaveChangesAsync(ct);
+                    return;
+                }
+
+                _logger.LogDebug("Validating {Count} extracted files as DICOM", extractResult.AcceptedFiles.Count);
+
+                var dicomValidationResult = await _dicomFileValidator.ValidateDicomFiles(extractResult.AcceptedFiles, ct);
+
+                if (!dicomValidationResult.Success)
+                {
+                    _logger.LogWarning("DICOM validation failed for ZIP {LocalPath}", localPath);
+                    upload.UploadValidationErrors.Add(new UploadValidationError
+                    {
+                        ValidationType = "DICOM",
+                        ValidationErrorMessage = dicomValidationResult.RejectedFiles.Count > 0
+                            ? $"Rejected {dicomValidationResult.RejectedFiles.Count} files during DICOM validation: " +
+                                string.Join("; ", dicomValidationResult.RejectedFiles.Select(f => $"{f.File} ({f.Reason})"))
+                            : "Unknown DICOM validation failure"
+                    });
+                    job.Status = JobStatus.Completed;
+                    job.UpdatedAt = DateTimeOffset.UtcNow;
+                    await db.SaveChangesAsync(ct);
+                    return;
+                }
+
+                _logger.LogInformation("DICOM validation passed for {Count} files", dicomValidationResult.AcceptedFiles.Count);
+
             }
-            else
+
+            if (upload.UploadVirusScanResult is null)
             {
-                // Non-ZIP: direct ClamAV scan
                 _logger.LogInformation("Sending file {FileId} to ClamAV for scanning (non-zip)", upload.FileId);
                 var scanResult = await _clamClient.ScanFileOnServerMultithreadedAsync($"/scan/{upload.FileId}", ct);
-                _logger.LogInformation("ClamAV scan completed for {FileId}. Result={Result}", upload.FileId, scanResult.Result);
+                _logger.LogInformation("ClamAV scan completed for {FileId} with {Result}", upload.FileId, scanResult.Result);
                 _logger.LogDebug("ClamAV raw result length: {Len}", scanResult.RawResult?.Length ?? 0);
 
-                upload.ScanReportRaw = scanResult.RawResult?.Replace("\0", "");
-                upload.VirusDetected = scanResult.Result == ClamScanResults.VirusDetected ? DateTimeOffset.UtcNow : null;
+                upload.UploadVirusScanResult = new UploadVirusScanResult
+                {
+                    Result = (ScanReult)scanResult.Result,
+                    RawResult = scanResult.RawResult?.Replace("\0", ""),
+                    InfectedFiles = (scanResult.InfectedFiles ?? []).Select(f => new InfectedFile
+                    {
+                        FileName = f.FileName,
+                        VirusName = f.VirusName
+                    }).ToList()
+                };
+
+                if (scanResult.Result != ClamScanResults.Clean)
+                {
+                    job.Status = JobStatus.Completed;
+                    job.UpdatedAt = DateTimeOffset.UtcNow;
+                    await db.SaveChangesAsync(ct);
+                    return;
+                }
+
+                await db.SaveChangesAsync(ct);
             }
 
-            _logger.LogDebug("Updating upload entity with scan results (VirusDetected={VirusDetected})", upload.VirusDetected);
-            await db.SaveChangesAsync(ct);
-            _logger.LogInformation("Saved scan results to DB for UploadId={UploadId}", upload.UploadId);
+            _logger.LogInformation("Saved scan results to DB for {UploadId}", upload.UploadId);
 
-            // 6. Move S3 object to scanned folder
-            var sourceKey = upload.ObjectFileKey;
             var destinationKey = $"uploads/scanned/{upload.User.Sub}/{upload.FileId}";
-            _logger.LogInformation("Moving S3 object from {SourceKey} to {DestinationKey} in bucket {Bucket}", sourceKey, destinationKey, bucketName);
+            var sourceKey = upload.TempObjectKey;
 
-            try
+            if (!await _s3Client.ObjectExists(bucketName, destinationKey, ct))
             {
-                var copyRequest = new CopyObjectRequest
+                // Move S3 object to scanned folder
+                _logger.LogInformation("Moving S3 object from {SourceKey} to {DestinationKey} in bucket {Bucket}", sourceKey, destinationKey, bucketName);
+
+                try
                 {
-                    SourceBucket = bucketName,
-                    SourceKey = sourceKey,
-                    DestinationBucket = bucketName,
-                    DestinationKey = destinationKey
-                };
+                    var copyRequest = new CopyObjectRequest
+                    {
+                        SourceBucket = bucketName,
+                        SourceKey = sourceKey,
+                        DestinationBucket = bucketName,
+                        DestinationKey = destinationKey
+                    };
 
-                _logger.LogDebug("Starting S3 copy: {@CopyRequest}", copyRequest);
-                var copyResp = await _s3Client.CopyObjectAsync(copyRequest, ct);
-                _logger.LogInformation("S3 copy completed. HTTP status code: {StatusCode}", copyResp.HttpStatusCode);
+                    _logger.LogDebug("Starting S3 copy: {@CopyRequest}", copyRequest);
+                    var copyResp = await _s3Client.CopyObjectAsync(copyRequest, ct);
+                    _logger.LogInformation("S3 copy completed. HTTP status code: {StatusCode}", copyResp.HttpStatusCode);
 
-                var deleteRequest = new DeleteObjectRequest
+                    upload.PersistedObjectKey = destinationKey;
+                }
+                catch (AmazonS3Exception s3ex)
                 {
-                    BucketName = bucketName,
-                    Key = sourceKey
-                };
-
-                _logger.LogDebug("Starting S3 delete: {@DeleteRequest}", deleteRequest);
-                var deleteResp = await _s3Client.DeleteObjectAsync(deleteRequest, ct);
-                _logger.LogInformation("S3 delete completed. HTTP status code: {StatusCode}", deleteResp.HttpStatusCode);
-            }
-            catch (Exception s3ex)
-            {
-                _logger.LogError(s3ex, "Failed to move S3 object {Source} -> {Destination}", upload.ObjectFileKey, destinationKey);
-                throw;
+                    _logger.LogError(s3ex, "Failed to move S3 object {Source} {Destination}", upload.TempObjectKey, destinationKey);
+                    throw;
+                }
             }
 
-            upload.ObjectFileKey = destinationKey;
+
+            if (await _s3Client.ObjectExists(bucketName, sourceKey, ct))
+            {
+                try
+                {
+                    var deleteRequest = new DeleteObjectRequest
+                    {
+                        BucketName = bucketName,
+                        Key = sourceKey
+                    };
+
+                    _logger.LogDebug("Starting S3 delete: {@DeleteRequest}", deleteRequest);
+                    var deleteResp = await _s3Client.DeleteObjectAsync(deleteRequest, ct);
+                    _logger.LogInformation("S3 delete completed. HTTP status code: {StatusCode}", deleteResp.HttpStatusCode);
+                }
+                catch (AmazonS3Exception s3ex)
+                {
+                    _logger.LogError(s3ex, "Failed to delete S3 object {Source}", sourceKey);
+
+                    throw;
+                }
+            }
+
             job.Status = JobStatus.Completed;
             job.UpdatedAt = DateTimeOffset.UtcNow;
 
-            _logger.LogDebug("Marking job {JobId} completed and saving DB", job.JobId);
+            _logger.LogDebug("Marking job completed and saving DB");
             await db.SaveChangesAsync(ct);
-            _logger.LogInformation("Job {JobId} completed successfully", job.JobId);
+            _logger.LogInformation("Job completed successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during job processing");
+            throw;
         }
         finally
         {
-            _logger.LogDebug("Cleaning up local files. localPath={LocalPath} extractDir={ExtractDir}", localPath, extractDir);
+            _logger.LogDebug("Cleaning up local files. {LocalPath} {ExtractDir}", localPath, extractDir);
             TryDelete(localPath);
             TryDeleteDirectory(extractDir);
         }
     }
-
-
-    private async Task<List<string>> ExtractAndValidateZipAsync(string zipPath, string extractDir, CancellationToken ct)
-    {
-        var extractedFiles = new List<string>();
-
-        _logger.LogDebug("Opening ZIP file {ZipPath}", zipPath);
-        using var zip = await ZipFile.OpenReadAsync(zipPath, ct);
-
-        foreach (var entry in zip.Entries)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            _logger.LogDebug("Inspecting ZIP entry: {EntryName} (Size={Size})", entry.FullName, entry.Length);
-
-            // Reject path traversal
-            if (entry.FullName.Contains(".."))
-            {
-                _logger.LogWarning("ZIP entry {EntryName} contains path traversal; rejecting", entry.FullName);
-                throw new InvalidOperationException("ZIP contains illegal path traversal");
-            }
-
-            // Reject hidden/system files
-            if (entry.FullName.StartsWith("__MACOSX", StringComparison.OrdinalIgnoreCase) ||
-                entry.FullName.StartsWith(".", StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("ZIP entry {EntryName} is hidden/system; rejecting", entry.FullName);
-                throw new InvalidOperationException("ZIP contains hidden or system files");
-            }
-
-            // Reject nested ZIPs
-            if (entry.FullName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("ZIP entry {EntryName} is a nested ZIP; rejecting", entry.FullName);
-                throw new InvalidOperationException("Nested ZIPs are not allowed");
-            }
-
-            // ⭐ Skip directory entries (critical fix)
-            if (entry.FullName.EndsWith("/"))
-            {
-                _logger.LogDebug("Skipping directory entry {EntryName}", entry.FullName);
-                continue;
-            }
-
-            // Build destination path
-            var destinationPath = Path.Combine(extractDir, entry.FullName);
-
-            // Ensure parent directory exists
-            var parentDir = Path.GetDirectoryName(destinationPath)!;
-            Directory.CreateDirectory(parentDir);
-
-            _logger.LogDebug("Extracting entry {EntryName} to {DestinationPath}", entry.FullName, destinationPath);
-
-            // Extract file
-            await entry.ExtractToFileAsync(destinationPath, overwrite: true, ct);
-
-            extractedFiles.Add(destinationPath);
-            _logger.LogInformation(
-                "Extracted {EntryName} -> {DestinationPath} (currentCount={Count})",
-                entry.FullName, destinationPath, extractedFiles.Count);
-        }
-
-        return extractedFiles;
-    }
-
-
-    private void ValidateDicomFiles(List<string> files)
-    {
-        _logger.LogDebug("Validating {Count} files as DICOM", files.Count);
-
-        foreach (var file in files)
-        {
-            _logger.LogDebug("Validating DICOM header for file {File}", file);
-
-            var name = Path.GetFileName(file);
-
-            // Skip directories (should never be in the list, but safe)
-            if (Directory.Exists(file))
-                continue;
-
-            // Open file
-            using var fs = File.OpenRead(file);
-
-            if (fs.Length < 132)
-            {
-                _logger.LogWarning("File {File} is too small to be DICOM (length={Len})", file, fs.Length);
-                throw new InvalidOperationException($"Invalid DICOM file: {file}");
-            }
-
-            // Read magic at offset 128
-            fs.Seek(128, SeekOrigin.Begin);
-            var buffer = new byte[4];
-            fs.ReadExactly(buffer, 0, 4);
-
-            var magic = Encoding.ASCII.GetString(buffer);
-            _logger.LogDebug("DICOM header read for {File}: {Magic}", file, magic);
-
-            // Accept files with DICM magic
-            if (magic == "DICM")
-            {
-                _logger.LogInformation("DICOM validation succeeded for {File}", file);
-                continue;
-            }
-
-            // Some valid DICOM files do NOT contain the DICM preamble
-            // (allowed by the DICOM standard)
-            _logger.LogWarning("File {File} missing DICM magic; may be implicit VR DICOM", file);
-
-            // You can choose to accept or reject these.
-            // Most systems accept them.
-            continue;
-        }
-    }
-
-
 
     private async Task DownloadFile(
            IAmazonS3 s3,
@@ -409,7 +395,7 @@ public class VirusScanner : BackgroundService
                 File.Delete(path);
             }
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to delete file {Path}", path);
         }
@@ -420,15 +406,21 @@ public class VirusScanner : BackgroundService
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
         var job = await db.Jobs
-            .FromSqlInterpolated($@"
-                SELECT *
-                FROM ""Jobs""
-                WHERE ""Status"" = {JobStatus.Pending}
-                  AND ""Type"" = 'virus-scan'
-                ORDER BY ""JobId""
-                FOR UPDATE SKIP LOCKED
-                LIMIT 1")
-            .FirstOrDefaultAsync(ct);
+         .FromSqlInterpolated($@"
+            SELECT *
+            FROM ""Jobs""
+            WHERE ""Type"" = 'virus-scan'
+              AND (
+                    (""Status"" = {JobStatus.Pending})
+                    OR
+                    (""Status"" = {JobStatus.Failed} AND ""Attempts"" < ""MaxAttempts"")
+                  )
+            ORDER BY ""JobId""
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+        ")
+         .FirstOrDefaultAsync(ct);
+
 
         if (job == null)
         {

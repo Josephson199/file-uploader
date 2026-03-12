@@ -18,6 +18,8 @@ using tusdotnet;
 using Yarp.ReverseProxy.Configuration;
 using Yarp.ReverseProxy.Forwarder;
 
+//TODO: Add /self endpoint
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
@@ -140,11 +142,29 @@ app.UseAuthentication();
 app.UseMiddleware<EnsureUserExistsMiddleware>();
 app.UseAuthorization();
 
-app.MapGet("/api/files-list", async (AppDbContext db, CancellationToken ct) =>
+app.MapGet("/api/files-list", async (HttpContext context, AppDbContext db, CancellationToken ct) =>
 {
+    var sub = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    if (sub is null)
+    {
+        return Results.InternalServerError();
+    }
+
+    var userId = await db.Users
+        .Where(u => u.Sub == sub)
+        .Select(u => u.UserId)
+        .SingleAsync(ct);
+
+    if (userId == 0)
+    {
+        return Results.InternalServerError();
+    }
+
     var files = await db.Uploads
-        .OrderByDescending(u => u.UploadedAt)
-        .Select(u => new { u.UploadId, u.FileId, u.OrignalFileName, u.UploadedAt, u.VirusDetected })
+        .Where(u => u.UserId == userId)
+        .OrderByDescending(u => u.CreatedAt)
+        .Select(u => new { u.UploadId, u.FileId, u.OrignalFileName, u.CreatedAt })
         .ToArrayAsync(ct);
 
     return Results.Ok(files);
@@ -156,6 +176,21 @@ JsonSerializerOptions jsonOptions = new JsonSerializerOptions { PropertyNameCase
 app.MapGet("/api/events", async (HttpContext context, EventStream stream, AppDbContext db, CancellationToken ct) =>
 {
     var sub = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    
+    if (sub is null)
+    {
+        return Results.InternalServerError();
+    }
+
+    var userId = await db.Users
+           .Where(u => u.Sub == sub)
+           .Select(u => u.UserId)
+           .SingleAsync(ct);
+
+    if (userId == 0)
+    {
+        return Results.InternalServerError();
+    }
 
     ArgumentException.ThrowIfNullOrWhiteSpace(sub);
 
@@ -166,13 +201,11 @@ app.MapGet("/api/events", async (HttpContext context, EventStream stream, AppDbC
             var msg = JsonSerializer.Deserialize<Job>(message, jsonOptions);
             if (msg is not null && msg.Type == "virus-scan")
             {
-                var user = await db.Users.SingleAsync(u => u.Sub == sub, ct);
-
                 var payload = JsonSerializer.Deserialize<VirusScanPayload>(msg.Payload, jsonOptions);
 
                 ArgumentNullException.ThrowIfNull(payload);
 
-                if (payload.UserId == user.UserId)
+                if (payload.UserId == userId)
                 {
                     yield return msg;
                 }

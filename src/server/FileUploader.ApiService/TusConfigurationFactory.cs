@@ -206,8 +206,8 @@ public class TusConfigurationFactory
                     {
                         FileId = ctx.FileId,
                         OrignalFileName = meta.ContainsKey("filename") ? meta["filename"].GetString(Encoding.UTF8) ?? "unknown" : "unknown",
-                        ObjectFileKey = candidate?.ObjectFileKey ?? CreateObjectFileKey(ctx.HttpContext, ctx.FileId),
-                        UploadedAt = DateTimeOffset.UtcNow,
+                        TempObjectKey = candidate?.ObjectFileKey ?? CreateObjectFileKey(ctx.HttpContext, ctx.FileId),
+                        CreatedAt = DateTimeOffset.UtcNow,
                         User = user,
                     };
 

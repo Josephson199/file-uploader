@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
 
 namespace FileUploader.Data;
@@ -32,17 +33,55 @@ public class Upload
 
     public required string OrignalFileName { get; set; }
 
-    public DateTimeOffset UploadedAt { get; set; }
-
-    public DateTimeOffset? VirusDetected { get; set; }
-
-    public string? ScanReportRaw { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public User User { get; set; } = default!;
 
-    public required string ObjectFileKey { get; set; }
+    public required string TempObjectKey { get; set; }
+
+    public string? PersistedObjectKey { get; set; }
 
     public required string FileId { get; set; }
+
+    public List<UploadValidationError> UploadValidationErrors { get; set; } = [];
+
+    public UploadVirusScanResult? UploadVirusScanResult { get; set; }
+}
+
+public class UploadValidationError
+{
+    public int UploadValidationErrorId { get; set; }
+    public int UploadId { get; set; }
+    public string? ValidationErrorMessage { get; set; }
+    public string ValidationType { get; set; } = default!;
+    public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public class UploadVirusScanResult
+{
+    public int UploadVirusScanResultId { get; set; }
+    public int UploadId { get; set; }
+    public ScanReult Result { get; set; }
+    public string? RawResult { get; set; }
+    public List<InfectedFile> InfectedFiles { get; set; } = [];
+    public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public class InfectedFile
+{
+    public int InfectedFileId { get; set; }
+    public UploadVirusScanResult UploadVirusScanResult { get; set; } = default!;
+    public int UploadVirusScanResultId { get; set; }
+    public string FileName { get; set; } = default!;
+    public string VirusName { get; set; } = default!;
+}
+
+public enum ScanReult
+{
+    Unknown,
+    Clean,
+    VirusDetected,
+    Error
 }
 
 public class UploadCandidate
@@ -91,9 +130,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<User> Users { get; set; }
     public DbSet<Upload> Uploads { get; set; }
-
-    // New DbSet for upload candidates
     public DbSet<UploadCandidate> UploadCandidates { get; set; }
+    public DbSet<UploadVirusScanResult> UploadVirusScanResults { get; set; }
+    public DbSet<UploadValidationError> UploadValidationResults { get; set; }
 
     public DbSet<Job> Jobs { get; set; }
 
@@ -122,9 +161,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.OrignalFileName)
                 .HasMaxLength(255)
                 .IsRequired();
-            entity.Property(e => e.ScanReportRaw)
-                .HasMaxLength(1024);
-            entity.Property(e => e.ObjectFileKey)
+            entity.Property(e => e.TempObjectKey)
                 .HasMaxLength(1024)
                 .IsRequired();
             entity.Property(e => e.FileId)
@@ -146,6 +183,31 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .IsRequired();
             entity.Property(e => e.ObjectFileKey)
                 .HasMaxLength(1024);
+        });
+
+        modelBuilder.Entity<UploadVirusScanResult>(entity =>
+        {
+            entity.HasKey(e => e.UploadVirusScanResultId);
+            entity.Property(e => e.RawResult)
+                .HasMaxLength(2048);
+        });
+
+        modelBuilder.Entity<InfectedFile>(entity =>
+        {
+            entity.HasKey(e => e.InfectedFileId);
+            entity.Property(e => e.FileName)
+                .HasMaxLength(255)
+                .IsRequired();
+            entity.Property(e => e.VirusName)
+                .HasMaxLength(1048)
+                .IsRequired();
+        });
+
+        modelBuilder.Entity<UploadValidationError>(entity =>
+        {
+            entity.HasKey(e => e.UploadValidationErrorId);
+            entity.Property(e => e.ValidationErrorMessage)
+                .HasMaxLength(4000);
         });
 
         modelBuilder.Entity<Job>(entity =>

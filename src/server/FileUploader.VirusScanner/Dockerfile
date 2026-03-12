@@ -1,3 +1,5 @@
+ARG APP_VERSION=0.0.1
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
@@ -24,5 +26,8 @@ USER root
 WORKDIR /app
 COPY --from=build /app/publish .
 
+ENV APP_VERSION=${APP_VERSION}
+
 ENTRYPOINT ["dotnet", "FileUploader.VirusScanner.dll"]
-# f2fffaesasf
+
+# foo

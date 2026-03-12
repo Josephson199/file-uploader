@@ -1,4 +1,5 @@
 ﻿using Amazon.S3;
+using FellowOakDicom;
 using FileUploader.Data;
 using FileUploader.VirusScanner;
 using Microsoft.EntityFrameworkCore;
@@ -39,8 +40,21 @@ using var host = Host.CreateDefaultBuilder(args)
             return new ClamClient(parsed.Host, parsed.Port);
         });
 
+        services.AddSingleton<ZipExtractor>();
+        services.AddSingleton<DicomFileValidator>();
+        services.AddFellowOakDicom();
+
         services.AddHostedService<VirusScanner>();
     })
     .Build();
 
-await host.RunAsync();
+DicomSetupBuilder.UseServiceProvider(host.Services);
+
+var logger = host.Services.GetRequiredService<ILogger<Program>>();
+
+var appVersion = host.Services.GetRequiredService<IConfiguration>()["APP_VERSION"] ?? "0.0.1";
+
+using (logger.BeginScope("AppVersionId: {Id}", appVersion))
+{
+    await host.RunAsync();
+}   

@@ -23,6 +23,34 @@ namespace FileUploader.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("FileUploader.Data.InfectedFile", b =>
+                {
+                    b.Property<int>("InfectedFileId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("InfectedFileId"));
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("UploadVirusScanResultId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("VirusName")
+                        .IsRequired()
+                        .HasMaxLength(1048)
+                        .HasColumnType("character varying(1048)");
+
+                    b.HasKey("InfectedFileId");
+
+                    b.HasIndex("UploadVirusScanResultId");
+
+                    b.ToTable("InfectedFile");
+                });
+
             modelBuilder.Entity("FileUploader.Data.Job", b =>
                 {
                     b.Property<long>("JobId")
@@ -76,33 +104,29 @@ namespace FileUploader.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("UploadId"));
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("FileId")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
-
-                    b.Property<string>("ObjectFileKey")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("character varying(1024)");
 
                     b.Property<string>("OrignalFileName")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
-                    b.Property<string>("ScanReportRaw")
+                    b.Property<string>("PersistedObjectKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TempObjectKey")
+                        .IsRequired()
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
 
-                    b.Property<DateTimeOffset>("UploadedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<int>("UserId")
                         .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("VirusDetected")
-                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("UploadId");
 
@@ -147,6 +171,64 @@ namespace FileUploader.Data.Migrations
                     b.ToTable("UploadCandidates");
                 });
 
+            modelBuilder.Entity("FileUploader.Data.UploadValidationError", b =>
+                {
+                    b.Property<int>("UploadValidationErrorId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("UploadValidationErrorId"));
+
+                    b.Property<DateTimeOffset>("Created")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UploadId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ValidationErrorMessage")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("ValidationType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("UploadValidationErrorId");
+
+                    b.HasIndex("UploadId");
+
+                    b.ToTable("UploadValidationResults");
+                });
+
+            modelBuilder.Entity("FileUploader.Data.UploadVirusScanResult", b =>
+                {
+                    b.Property<int>("UploadVirusScanResultId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("UploadVirusScanResultId"));
+
+                    b.Property<DateTimeOffset>("Created")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RawResult")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UploadId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("UploadVirusScanResultId");
+
+                    b.HasIndex("UploadId")
+                        .IsUnique();
+
+                    b.ToTable("UploadVirusScanResults");
+                });
+
             modelBuilder.Entity("FileUploader.Data.User", b =>
                 {
                     b.Property<int>("UserId")
@@ -166,6 +248,17 @@ namespace FileUploader.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("FileUploader.Data.InfectedFile", b =>
+                {
+                    b.HasOne("FileUploader.Data.UploadVirusScanResult", "UploadVirusScanResult")
+                        .WithMany("InfectedFiles")
+                        .HasForeignKey("UploadVirusScanResultId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("UploadVirusScanResult");
                 });
 
             modelBuilder.Entity("FileUploader.Data.Upload", b =>
@@ -188,6 +281,36 @@ namespace FileUploader.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("OwnerUser");
+                });
+
+            modelBuilder.Entity("FileUploader.Data.UploadValidationError", b =>
+                {
+                    b.HasOne("FileUploader.Data.Upload", null)
+                        .WithMany("UploadValidationErrors")
+                        .HasForeignKey("UploadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FileUploader.Data.UploadVirusScanResult", b =>
+                {
+                    b.HasOne("FileUploader.Data.Upload", null)
+                        .WithOne("UploadVirusScanResult")
+                        .HasForeignKey("FileUploader.Data.UploadVirusScanResult", "UploadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FileUploader.Data.Upload", b =>
+                {
+                    b.Navigation("UploadValidationErrors");
+
+                    b.Navigation("UploadVirusScanResult");
+                });
+
+            modelBuilder.Entity("FileUploader.Data.UploadVirusScanResult", b =>
+                {
+                    b.Navigation("InfectedFiles");
                 });
 
             modelBuilder.Entity("FileUploader.Data.User", b =>

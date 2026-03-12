@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="fo-dicom" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="nClam" />
     <PackageReference Include="SonarAnalyzer.CSharp">
