@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FileUploader.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260312070435_AddJobUpdateNotifyTrigger")]
+    [Migration("20260314201909_AddJobUpdateNotifyTrigger")]
     partial class AddJobUpdateNotifyTrigger
     {
         /// <inheritdoc />
@@ -81,10 +81,9 @@ namespace FileUploader.Data.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
+                    b.Property<int>("Status")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -94,7 +93,12 @@ namespace FileUploader.Data.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
                     b.HasKey("JobId");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("Jobs");
                 });
@@ -264,6 +268,16 @@ namespace FileUploader.Data.Migrations
                     b.Navigation("UploadVirusScanResult");
                 });
 
+            modelBuilder.Entity("FileUploader.Data.Job", b =>
+                {
+                    b.HasOne("FileUploader.Data.User", "User")
+                        .WithMany("Jobs")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("FileUploader.Data.Upload", b =>
                 {
                     b.HasOne("FileUploader.Data.User", "User")
@@ -318,6 +332,8 @@ namespace FileUploader.Data.Migrations
 
             modelBuilder.Entity("FileUploader.Data.User", b =>
                 {
+                    b.Navigation("Jobs");
+
                     b.Navigation("UploadCandidates");
 
                     b.Navigation("Uploads");

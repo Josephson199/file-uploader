@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-interface JobEvent {
+export interface JobEvent {
   jobId: string;
   type: string;
   status: string;
@@ -11,8 +11,8 @@ interface JobEvent {
   createdAt: string;
   updatedAt: string;
   payload: Record<string, any>;
+  userId?: number;
 }
-
 export const useJobEvents = (onEvent?: (event: JobEvent) => void) => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);

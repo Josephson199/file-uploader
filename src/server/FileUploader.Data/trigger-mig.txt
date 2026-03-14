@@ -18,6 +18,7 @@ namespace FileUploader.Data.Migrations
                     payload = json_build_object(
                         'jobId', NEW.""JobId"",
                         'type', NEW.""Type"",
+                        'userId', NEW.""UserId"",
                         'status', NEW.""Status"",
                         'attempts', NEW.""Attempts"",
                         'maxAttempts', NEW.""MaxAttempts"",

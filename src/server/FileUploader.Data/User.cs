@@ -1,18 +1,20 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Reflection;
 using System.Text.Json;
 
 namespace FileUploader.Data;
 
-public static class JobStatus
+public enum JobStatus
 {
-    public const string Pending = "pending";
-    public const string Processing = "processing";
-    public const string Completed = "completed";
-    public const string Failed = "failed";
+    Pending,
+    Processing,
+    Completed,
+    Failed,
 }
 
-public record VirusScanPayload(int UploadId, int UserId);
+public record VirusScanPayload(int UploadId);
 
 public class User
 {
@@ -23,6 +25,8 @@ public class User
     public List<Upload> Uploads { get; set; } = [];
 
     public List<UploadCandidate> UploadCandidates { get; set; } = [];
+
+    public List<Job> Jobs { get; set; } = [];
 }
 
 public class Upload
@@ -108,9 +112,13 @@ public class Job
 
     public string Type { get; set; } = default!;
 
+    public int? UserId { get; set; }
+
+    public User? User { get; set; }
+
     public JsonDocument Payload { get; set; } = default!;
 
-    public string Status { get; set; } = JobStatus.Pending;
+    public JobStatus Status { get; set; } = JobStatus.Pending;
 
     public int Attempts { get; set; } = 0;
 
@@ -149,7 +157,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasMany(e => e.Uploads)
                   .WithOne(e => e.User)
                   .HasForeignKey(e => e.UserId);
-
+            entity.HasMany(e => e.Jobs)
+                .WithOne(e => e.User)
+                .HasForeignKey(e => e.UserId);
             entity.HasMany(e => e.UploadCandidates)
                   .WithOne(e => e.OwnerUser)
                   .HasForeignKey(e => e.OwnerUserId);
@@ -222,6 +232,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(e => e.Payload)
                 .HasColumnType("jsonb")
                 .IsRequired();
+            entity.HasOne(e => e.User)
+                .WithMany(u => u.Jobs)
+                .HasForeignKey(j => j.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

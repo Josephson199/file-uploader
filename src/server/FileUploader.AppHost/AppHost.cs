@@ -12,6 +12,7 @@ using System.Net.Sockets;
 // Add some sort of domain, maybe healthcare.
 // List files in client
 // Fix event stream?
+// Module based arch
 
 var builder = DistributedApplication.CreateBuilder(args);
 

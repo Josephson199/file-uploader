@@ -3,30 +3,36 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using System.Threading.Channels;
+using FileUploader.Data;
 
 namespace FileUploader.ApiService;
 
-public class EventStream
+internal static class DefaultJsonOptions
 {
-    private readonly Channel<string> _channel =
-        Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+    internal static readonly JsonSerializerOptions JsonSerializerOptions = new() { PropertyNameCaseInsensitive = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+}
+
+internal class EventStream
+{
+    private readonly Channel<JobEvent> _channel =
+        Channel.CreateUnbounded<JobEvent>(new UnboundedChannelOptions
         {
             SingleReader = false,
             SingleWriter = false
         });
 
-    public void Publish(string message)
+    public void Publish(JobEvent message)
     {
         _channel.Writer.TryWrite(message);
     }
 
-    public IAsyncEnumerable<string> Subscribe(CancellationToken ct)
+    public IAsyncEnumerable<JobEvent> Subscribe(CancellationToken ct)
     {
         return _channel.Reader.ReadAllAsync(ct);
     }
 }
 
-public class JobUpdateListener : BackgroundService
+internal class JobUpdateListener : BackgroundService
 {
     private readonly ILogger<JobUpdateListener> _logger;
     private readonly EventStream _stream;
@@ -72,11 +78,10 @@ public class JobUpdateListener : BackgroundService
             {
                 _logger.LogInformation("Received job update: {Payload}", e.Payload);
 
-                // Optionally validate JSON
-                using var doc = JsonDocument.Parse(e.Payload);
+                var jobEvent = JsonSerializer.Deserialize<JobEvent>(e.Payload, DefaultJsonOptions.JsonSerializerOptions)!;
 
                 // Push to SSE stream
-                _stream.Publish(e.Payload);
+                _stream.Publish(jobEvent);
             }
             catch (Exception ex)
             {

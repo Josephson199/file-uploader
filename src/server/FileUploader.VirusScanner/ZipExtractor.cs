@@ -4,7 +4,7 @@ using System.IO.Compression;
 
 namespace FileUploader.VirusScanner;
 
-internal class ZipExtractor
+internal sealed class ZipExtractor
 {
     private readonly ILogger<ZipExtractor> _logger;
 
@@ -79,7 +79,7 @@ internal class ZipExtractor
         }
 
         return new ExtractResult(
-            Success: rejectedFiles.Any(),
+            Success: !rejectedFiles.Any(),
             AcceptedFiles: acceptedFiles.ToImmutableList(),
             RejectedFiles: rejectedFiles.ToImmutableList());
     }

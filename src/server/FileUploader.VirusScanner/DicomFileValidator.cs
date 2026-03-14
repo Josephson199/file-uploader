@@ -4,7 +4,7 @@ using System.Collections.Immutable;
 
 namespace FileUploader.VirusScanner;
 
-internal class DicomFileValidator
+internal sealed class DicomFileValidator
 {
     private readonly ILogger<DicomFileValidator> _logger;
 

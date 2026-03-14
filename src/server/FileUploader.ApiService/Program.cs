@@ -14,6 +14,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using tusdotnet;
 using Yarp.ReverseProxy.Configuration;
 using Yarp.ReverseProxy.Forwarder;
@@ -54,6 +55,11 @@ if (builder.Environment.IsDevelopment())
             }
         );
 }
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 builder.Services.AddDbContextFactory<AppDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("postgresdb")));
@@ -113,6 +119,7 @@ builder.Services.AddSingleton<FileValidator>();
 builder.Services.Configure<UploadOptions>(
     builder.Configuration.GetSection("Upload"));
 builder.Services.AddSingleton<TusConfigurationFactory>();
+builder.Services.AddSingleton<JobQueue<VirusScanPayload>>();
 
 builder.Services.AddSingleton<EventStream>();
 builder.Services.AddHostedService<JobUpdateListener>();
@@ -142,6 +149,40 @@ app.UseAuthentication();
 app.UseMiddleware<EnsureUserExistsMiddleware>();
 app.UseAuthorization();
 
+JsonSerializerOptions jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+app.MapGet("/api/jobs-list", async (HttpContext context, AppDbContext db, CancellationToken ct) =>
+{
+    var sub = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    if (sub is null)
+    {
+        return Results.InternalServerError();
+    }
+
+    var result = await db.Users
+        .Where(u => u.Sub == sub)
+        .SelectMany(u => u.Jobs.Select(j => new
+        {
+            j.Status,
+            j.Type,
+            j.Payload,
+            j.CreatedAt,
+            j.UpdatedAt,
+            j.Attempts,
+            j.MaxAttempts,
+            j.JobId,
+            j.UserId,
+            j.LockedAt,
+            j.LockedBy
+        }))
+        .OrderByDescending(j => j.JobId)
+        .ToArrayAsync(ct);
+
+    return Results.Ok(result);
+})
+.RequireAuthorization();
+
 app.MapGet("/api/files-list", async (HttpContext context, AppDbContext db, CancellationToken ct) =>
 {
     var sub = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -167,16 +208,45 @@ app.MapGet("/api/files-list", async (HttpContext context, AppDbContext db, Cance
         .Select(u => new { u.UploadId, u.FileId, u.OrignalFileName, u.CreatedAt })
         .ToArrayAsync(ct);
 
-    return Results.Ok(files);
+    var uploadIds = files.Select(f => f.UploadId).ToArray();
+
+    var jobs = await db.Jobs
+        .FromSqlInterpolated($@"
+            SELECT *
+            FROM ""Jobs""
+            WHERE ""Type"" = {nameof(VirusScanPayload)}
+              AND (""Payload""->>'uploadId')::int = ANY ({uploadIds})
+        ")
+        .ToArrayAsync(ct);
+
+    var result = files.Select(f =>
+    {
+        var job = jobs.Where(j =>
+        {
+            var payload = j.Payload.Deserialize<VirusScanPayload>(jsonOptions)!;
+            return payload.UploadId == f.UploadId;
+        })
+        .OrderByDescending(e => e.CreatedAt)
+        .FirstOrDefault();
+
+        return new
+        {
+            f.UploadId,
+            f.FileId,
+            f.OrignalFileName,
+            f.CreatedAt,
+            job
+        };
+    });
+
+    return Results.Ok(result);
 })
 .RequireAuthorization();
-
-JsonSerializerOptions jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
 app.MapGet("/api/events", async (HttpContext context, EventStream stream, AppDbContext db, CancellationToken ct) =>
 {
     var sub = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
-    
+
     if (sub is null)
     {
         return Results.InternalServerError();
@@ -194,21 +264,13 @@ app.MapGet("/api/events", async (HttpContext context, EventStream stream, AppDbC
 
     ArgumentException.ThrowIfNullOrWhiteSpace(sub);
 
-    async IAsyncEnumerable<Job> GetJobs()
+    async IAsyncEnumerable<JobEvent> GetJobs()
     {
-        await foreach (var message in stream.Subscribe(ct))
+        await foreach (var jobEvent in stream.Subscribe(ct))
         {
-            var msg = JsonSerializer.Deserialize<Job>(message, jsonOptions);
-            if (msg is not null && msg.Type == "virus-scan")
+            if (jobEvent?.UserId == userId)
             {
-                var payload = JsonSerializer.Deserialize<VirusScanPayload>(msg.Payload, jsonOptions);
-
-                ArgumentNullException.ThrowIfNull(payload);
-
-                if (payload.UserId == userId)
-                {
-                    yield return msg;
-                }
+                yield return jobEvent;
             }
         }
     }

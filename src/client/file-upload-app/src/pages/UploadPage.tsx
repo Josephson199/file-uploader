@@ -3,7 +3,8 @@ import { Grid, Box, Typography } from '@mui/material';
 import AuthenticationMessage from '../components/AuthenticationMessage';
 import { useContext, useEffect } from 'react';
 import Uploader from '../components/Uploader';
-import FileList from '../components/FileList';
+import FileManager from '../components/FileManager';
+import JobList from '../components/JobList';
 
 const Upload: React.FC = () => {
 
@@ -24,8 +25,9 @@ const Upload: React.FC = () => {
           <Uploader />
         </Grid>
         <Grid item xs={12} md={6}>
-          <FileList />
+          <JobList />
         </Grid>
+        <FileManager></FileManager>
       </Grid>
     </Box>
   );

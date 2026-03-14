@@ -221,22 +221,11 @@ public class TusConfigurationFactory
 
                     await db.SaveChangesAsync(ctx.CancellationToken);
 
-                    var job = new Job
-                    {
-                        CreatedAt = DateTimeOffset.UtcNow,
-                        MaxAttempts = 5,
-                        Status = "pending",
-                        Type = "virus-scan",
-                        Payload = JsonSerializer.SerializeToDocument(new VirusScanPayload(upload.UploadId, user.UserId), options: s_jsonOptions),
-                        Attempts = 0,
-                        UpdatedAt = DateTimeOffset.UtcNow
-                    };
+                    var jobQueue = context.RequestServices.GetRequiredService<JobQueue<VirusScanPayload>>();
 
-                    db.Jobs.Add(job);
+                    await jobQueue.Enqueue(new VirusScanPayload(upload.UploadId), user.UserId);
 
-                    await db.SaveChangesAsync(ctx.CancellationToken);
-
-                    _logger.LogInformation("Created Upload and Job for FileId={FileId} UploadId={UploadId}", ctx.FileId, upload.UploadId);
+                    _logger.LogInformation("Created Upload and Job for {FileId} {UploadId}", ctx.FileId, upload.UploadId);
                 }
             }
         };

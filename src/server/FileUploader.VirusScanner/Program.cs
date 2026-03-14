@@ -12,6 +12,10 @@ using nClam;
 using var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((context, services) =>
     {
+        services.AddDbContextFactory<AppDbContext>(options =>
+            options.UseNpgsql(
+                context.Configuration.GetConnectionString("postgresdb")));
+
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(
                 context.Configuration.GetConnectionString("postgresdb")));
@@ -42,6 +46,7 @@ using var host = Host.CreateDefaultBuilder(args)
 
         services.AddSingleton<ZipExtractor>();
         services.AddSingleton<DicomFileValidator>();
+        services.AddSingleton<JobQueue<VirusScanPayload>>();
         services.AddFellowOakDicom();
 
         services.AddHostedService<VirusScanner>();

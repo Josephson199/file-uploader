@@ -2,6 +2,7 @@
 using Amazon.S3.Model;
 using FellowOakDicom;
 using FileUploader.Data;
+using FileUploader.VirusScanner.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.Extensions.Configuration;
@@ -13,9 +14,9 @@ using nClam;
 using System;
 using System.Collections.Immutable;
 using System.IO.Compression;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Text.Json;
-using FileUploader.VirusScanner.Extensions;
 
 namespace FileUploader.VirusScanner;
 
@@ -23,27 +24,28 @@ internal class VirusScanner : BackgroundService
 {
     private readonly ILogger<VirusScanner> _logger;
     private readonly IAmazonS3 _s3Client;
-    private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ClamClient _clamClient;
     private readonly string _clamScanDirectory;
     private readonly Guid _workerId = Guid.NewGuid();
     private readonly ZipExtractor _zipExtractor;
     private readonly DicomFileValidator _dicomFileValidator;
+    private readonly JobQueue<VirusScanPayload> _jobQueue;
+    private readonly IDbContextFactory<AppDbContext> _dbContextFactory;
 
     private static readonly JsonSerializerOptions s_jsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
     public VirusScanner(
         ILogger<VirusScanner> logger,
         IAmazonS3 s3Client,
-        IServiceScopeFactory serviceScopeFactory,
         IConfiguration configuration,
         ClamClient clamClient,
         ZipExtractor zipExtractor,
-        DicomFileValidator dicomFileValidator)
+        DicomFileValidator dicomFileValidator,
+        JobQueue<VirusScanPayload> jobQueue,
+        IDbContextFactory<AppDbContext> dbContextFactory)
     {
         _logger = logger;
         _s3Client = s3Client;
-        _serviceScopeFactory = serviceScopeFactory;
         _clamClient = clamClient;
         _zipExtractor = zipExtractor;
 
@@ -54,6 +56,8 @@ internal class VirusScanner : BackgroundService
 
         _logger.LogInformation("VirusScanner constructed. {WorkerId} {ScanDir}", _workerId, _clamScanDirectory);
         _dicomFileValidator = dicomFileValidator;
+        _jobQueue = jobQueue;
+        _dbContextFactory = dbContextFactory;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -66,28 +70,17 @@ internal class VirusScanner : BackgroundService
         {
             try
             {
-                await using var scope = _serviceScopeFactory.CreateAsyncScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-                _logger.LogDebug("Attempting to dequeue job");
-                var job = await TryDequeueJobAsync(db, _workerId.ToString(), stoppingToken);
-
-                if (job is null)
+                await foreach (var job in _jobQueue.Dequeue(_workerId.ToString(), stoppingToken))
                 {
-                    _logger.LogTrace("No job found. Sleeping 5s");
-                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-                    continue;
+                    using var db = await _dbContextFactory.CreateDbContextAsync(stoppingToken);
+
+                    using var jobLogScope = _logger.BeginScope(new Dictionary<string, object>
+                    {
+                        ["JobId"] = job.JobId,
+                    });
+                    _logger.LogInformation("Dequeued job");
+                    await ProcessJobSafe(db, job, stoppingToken);
                 }
-
-                using var jobLogScope = _logger.BeginScope(new Dictionary<string, object>
-                {
-                    ["JobId"] = job.JobId,
-                    ["JobType"] = job.Type
-                });
-
-                _logger.LogInformation("Dequeued job");
-
-                await ProcessJobSafe(db, job, stoppingToken);
             }
             catch (OperationCanceledException e)
             {
@@ -98,12 +91,17 @@ internal class VirusScanner : BackgroundService
             {
                 _logger.LogError(ex, "Unhandled error in worker loop");
             }
+            finally
+            {
+                _logger.LogDebug("Worker loop iteration complete, sleeping 1s");
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+            }
         }
 
         _logger.LogInformation("VirusScanner stopping");
     }
 
-    private async Task ProcessJobSafe(AppDbContext db, Job job, CancellationToken ct)
+    private async Task ProcessJobSafe(AppDbContext db, Job<VirusScanPayload> job, CancellationToken ct)
     {
         try
         {
@@ -113,45 +111,26 @@ internal class VirusScanner : BackgroundService
         {
             _logger.LogError(ex, "Error processing job");
 
-            job.Status = JobStatus.Failed;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
-
-            try
-            {
-                await db.SaveChangesAsync(ct);
-                _logger.LogInformation("Marked job as failed in DB");
-            }
-            catch (Exception saveEx)
-            {
-                _logger.LogError(saveEx, "Failed to save failed status for job");
-            }
+            await _jobQueue.FailJob(job, ct);
         }
     }
 
-    private async Task ProcessJob(AppDbContext db, Job job, CancellationToken ct)
+    private async Task ProcessJob(AppDbContext db, Job<VirusScanPayload> job, CancellationToken ct)
     {
         _logger.LogInformation("Processing job");
 
-        _logger.LogDebug("Deserializing payload for job {Payload}", job.Payload.RootElement.GetRawText());
-
-        var payload = JsonSerializer.Deserialize<VirusScanPayload>(job.Payload!, s_jsonSerializerOptions);
-
-        ArgumentNullException.ThrowIfNull(payload);
-
-        _logger.LogDebug("Payload deserialized for {UploadId}", payload.UploadId);
-
-        _logger.LogDebug("Loading upload record {UploadId}", payload.UploadId);
+        _logger.LogDebug("{Job}", job.ToString());
 
         var upload = await db.Uploads
             .Include(u => u.User)
             .Include(u => u.UploadValidationErrors)
             .Include(u => u.UploadVirusScanResult)
-            .SingleOrDefaultAsync(u => u.UploadId == payload.UploadId, ct);
+            .SingleOrDefaultAsync(u => u.UploadId == job.Payload.UploadId, ct);
 
         if (upload is null)
         {
-            _logger.LogWarning("Upload {UploadId} not found for job", payload.UploadId);
-            throw new InvalidOperationException($"Upload {payload.UploadId} not found");
+            _logger.LogWarning("Upload {UploadId} not found for job", job.Payload.UploadId);
+            throw new InvalidOperationException($"Upload {job.Payload.UploadId} not found");
         }
 
         _logger.LogInformation("Found upload {UploadId} {FileId}, {OriginalName}",
@@ -209,9 +188,8 @@ internal class VirusScanner : BackgroundService
                         ValidationErrorMessage = $"Rejected {extractResult.RejectedFiles.Count} files during ZIP extraction: " +
                             string.Join("; ", extractResult.RejectedFiles.Select(f => $"{f.FileName} ({f.Reason})"))
                     });
-                    job.Status = JobStatus.Completed;
-                    job.UpdatedAt = DateTimeOffset.UtcNow;
                     await db.SaveChangesAsync(ct);
+                    await _jobQueue.CompleteJob(job, ct);
                     return;
                 }
 
@@ -230,14 +208,12 @@ internal class VirusScanner : BackgroundService
                                 string.Join("; ", dicomValidationResult.RejectedFiles.Select(f => $"{f.File} ({f.Reason})"))
                             : "Unknown DICOM validation failure"
                     });
-                    job.Status = JobStatus.Completed;
-                    job.UpdatedAt = DateTimeOffset.UtcNow;
                     await db.SaveChangesAsync(ct);
+                    await _jobQueue.CompleteJob(job, ct);
                     return;
                 }
 
                 _logger.LogInformation("DICOM validation passed for {Count} files", dicomValidationResult.AcceptedFiles.Count);
-
             }
 
             if (upload.UploadVirusScanResult is null)
@@ -260,8 +236,7 @@ internal class VirusScanner : BackgroundService
 
                 if (scanResult.Result != ClamScanResults.Clean)
                 {
-                    job.Status = JobStatus.Completed;
-                    job.UpdatedAt = DateTimeOffset.UtcNow;
+                    await _jobQueue.CompleteJob(job, ct);
                     await db.SaveChangesAsync(ct);
                     return;
                 }
@@ -325,8 +300,7 @@ internal class VirusScanner : BackgroundService
                 }
             }
 
-            job.Status = JobStatus.Completed;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
+            await _jobQueue.CompleteJob(job, ct);
 
             _logger.LogDebug("Marking job completed and saving DB");
             await db.SaveChangesAsync(ct);
@@ -334,6 +308,7 @@ internal class VirusScanner : BackgroundService
         }
         catch (Exception ex)
         {
+            await _jobQueue.FailJob(job, ct);
             _logger.LogError(ex, "Error during job processing");
             throw;
         }
@@ -399,44 +374,5 @@ internal class VirusScanner : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to delete file {Path}", path);
         }
-    }
-
-    private static async Task<Job?> TryDequeueJobAsync(AppDbContext db, string workerId, CancellationToken ct)
-    {
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-
-        var job = await db.Jobs
-         .FromSqlInterpolated($@"
-            SELECT *
-            FROM ""Jobs""
-            WHERE ""Type"" = 'virus-scan'
-              AND (
-                    (""Status"" = {JobStatus.Pending})
-                    OR
-                    (""Status"" = {JobStatus.Failed} AND ""Attempts"" < ""MaxAttempts"")
-                  )
-            ORDER BY ""JobId""
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1
-        ")
-         .FirstOrDefaultAsync(ct);
-
-
-        if (job == null)
-        {
-            await tx.RollbackAsync(ct);
-            return null;
-        }
-
-        job.Status = JobStatus.Processing;
-        job.LockedAt = DateTimeOffset.UtcNow;
-        job.LockedBy = workerId;
-        job.Attempts += 1;
-        job.UpdatedAt = DateTimeOffset.UtcNow;
-
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
-
-        return job;
     }
 }

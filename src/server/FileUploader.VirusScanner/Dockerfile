@@ -30,4 +30,4 @@ ENV APP_VERSION=${APP_VERSION}
 
 ENTRYPOINT ["dotnet", "FileUploader.VirusScanner.dll"]
 
-# foo
+# fooytfjkjfkasf

@@ -29,7 +29,7 @@ const Uploader = () => {
         retryDelays: [0, 1000, 3000, 5000],
         headers: {
           'X-Custom-Header': '1234',
-        }
+        },        
     })
     .use(StatusBar, {
         showProgressDetails: true,
@@ -60,6 +60,16 @@ const Uploader = () => {
       }
     });
 
+    uppyInstance.on('file-removed', async (file) => {
+      const uploadUrl = file?.tus?.uploadUrl;
+      if (!uploadUrl) return;
+
+      await fetch(uploadUrl, {
+        method: 'DELETE'
+      });
+    });
+
+
     setUppy(uppyInstance);
 
     return () => {
@@ -77,7 +87,7 @@ const Uploader = () => {
 
   return (
     <UppyContextProvider uppy={uppy}>
-      <Dashboard uppy={uppy} proudlyDisplayPoweredByUppy={false}/>
+      <Dashboard uppy={uppy} proudlyDisplayPoweredByUppy={false} showRemoveButtonAfterComplete={true} />
     </UppyContextProvider>
   )
 }
